@@ -1,0 +1,24 @@
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = fileURLToPath(new URL("../", import.meta.url));
+const platform = process.platform === "win32" ? "windows" : process.platform;
+const binary = join(root, "dist", `aiusage-${platform}-${process.arch}${platform === "windows" ? ".exe" : ""}`);
+const run = (args) => {
+  const result = spawnSync(binary, args, { encoding: "utf8", timeout: 15_000 });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stderr, "");
+  assert.equal(result.stdout.includes("\x1b"), false);
+  return result.stdout;
+};
+const data = JSON.parse(run(["--demo", "--json"]));
+assert.equal(data.providers.length, 3);
+assert.equal(data.providers[0].tokens.models[0].today, 3_527_818);
+const text = run(["--demo", "--ascii", "--no-color"]);
+assert.match(text, /Sonnet 4\.6/);
+assert.match(text, /#+-+/);
+assert.doesNotMatch(text, /[━─]/u);
+console.log(`Standalone ${platform}-${process.arch}: OK`);

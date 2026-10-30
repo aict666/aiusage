@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test / ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [18, 24]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm test
+      - name: Check installed command and Windows npm shim
+        run: |
+          npm install --global .
+          aiusage --demo --ascii --no-color
+
+  build:
+    name: Build / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            targets: linux-x64 linux-arm64
+          - os: macos-latest
+            targets: darwin-arm64 darwin-x64
+          - os: windows-latest
+            targets: windows-x64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+      - run: npm run build -- ${{ matrix.targets }}
+      - name: Check native standalone executable
+        run: node scripts/smoke.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aiusage-${{ runner.os }}
+          path: dist/
+          retention-days: 7
