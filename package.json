@@ -1,0 +1,27 @@
+{
+  "name": "ai-quota",
+  "version": "0.1.0",
+  "description": "Show Claude, Codex, and Grok plan quotas and local token usage in the terminal.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jax-yu/ai-quota.git"
+  },
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "ai-quota": "./bin/ai-quota.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node ./bin/ai-quota.js",
+    "test": "node --test"
+  }
+}
