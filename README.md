@@ -140,7 +140,7 @@ npm run build -- windows-x64
 npm run build -- --all
 ```
 
-运行和测试只需要 Node.js；独立可执行文件构建另外需要 Bun（CI 固定为 `1.3.11`）。不指定目标时构建当前系统、当前架构，产物放在 `dist/`。CI 在 macOS、Linux、Windows 上测试 Node.js 18、24，检查 npm 安装后的命令入口，并在各系统运行原生独立文件的示例与 JSON 输出检查。
+运行和测试只需要 Node.js；独立可执行文件构建另外需要 Bun（CI 固定为 `1.3.11`）。Windows 原生构建使用 [Bun 的 x64 baseline 版本](https://github.com/oven-sh/bun/releases/download/bun-v1.3.11/bun-windows-x64-baseline.zip)，与编译目标保持一致；CI 会自动安装。不指定目标时构建当前系统、当前架构，产物放在 `dist/`。CI 在 macOS、Linux、Windows 上测试 Node.js 18、24，检查 npm 安装后的命令入口，并在各系统运行原生独立文件的示例与 JSON 输出检查。
 
 ## 隐私
 

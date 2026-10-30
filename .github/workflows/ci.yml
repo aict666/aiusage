@@ -54,6 +54,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.11
+          # Match the Windows compiler to its baseline target to avoid runtime extraction.
+          bun-download-url: ${{ runner.os == 'Windows' && 'https://github.com/oven-sh/bun/releases/download/bun-v1.3.11/bun-windows-x64-baseline.zip' || '' }}
       - run: npm run build -- ${{ matrix.targets }}
       - name: Check native standalone executable
         run: node scripts/smoke.js
