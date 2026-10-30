@@ -25,6 +25,7 @@ Requires Node.js 18 or newer and Git. Works in Unix shells, Windows PowerShell, 
 npm install --global github:aict666/aiusage
 aiusage
 aiusage --demo
+aiusage --live
 ```
 
 Run without a global install:
@@ -59,7 +60,7 @@ Example values from `aiusage --demo`:
 
 These are sample values, not live usage. The CLI currently uses Chinese labels. `--ascii` changes the decorations, not the language.
 
-The default table uses **two rows per model**: token totals and estimated USD costs on the first row, then cache reads/writes on the second. Models have no blank rows between them. Horizontal layout uses the available terminal width, and narrow terminals wrap as needed. CJK characters, combining characters, and common emoji are aligned by display width.
+The default table uses **two rows per model**: token totals and estimated USD costs on the first row, then cache reads/writes on the second. Models have no blank rows between them. Wide terminals use a bordered table with explicit `Token/USD` headers, inspired by [ccusage](https://github.com/ccusage/ccusage). Smaller terminals use a borderless table or wrap as needed. CJK characters, combining characters, and common emoji are aligned by display width.
 
 ## Commands
 
@@ -67,6 +68,10 @@ The default table uses **two rows per model**: token totals and estimated USD co
 | --- | --- |
 | `aiusage` | Show quotas, local tokens, cache usage, and estimated costs |
 | `aiusage --demo` | Preview with sample data, without reading credentials or logs or calling provider APIs |
+| `aiusage --live` | Monitor in place; refresh local logs every 15 seconds and quotas independently in the background |
+| `aiusage --offline` | Read local logs and saved quota snapshots without accessing credentials or the network |
+| `aiusage --live --interval 30` | Refresh local logs every 30 seconds; minimum 5 seconds |
+| `aiusage --live --quota-interval 1200` | Poll quotas no sooner than every 20 minutes; minimum 600 seconds |
 | `aiusage --details` | Expand token, cost, input/output, cache-write, and cache-hit-rate metrics into separate rows |
 | `aiusage --json` | Output raw counts, usage breakdowns, pricing metadata, and cost coverage as JSON |
 | `aiusage --ascii` | Use ASCII progress bars, separators, and decorations |
@@ -79,6 +84,40 @@ Options can be combined, for example `aiusage --demo --details --no-color`.
 `NO_COLOR`, including an empty value, disables colors. Unsupported terminals and redirected output do not receive color escapes. `TERM=dumb` also enables ASCII decorations and disables the live loading status.
 
 All three providers are read concurrently. If a provider request fails, the command exits with code `1` and still prints the results it collected. If all three providers are logged out, it also exits with code `1`.
+
+## Live monitoring and quota polling
+
+```text
+aiusage --live
+aiusage --live --interval 30 --quota-interval 1200
+aiusage --live --offline
+aiusage --live --demo
+```
+
+`live` is also accepted as an alias for `--live`. Live mode requires an interactive terminal and cannot be combined with `--json`. Press **q** or **Ctrl+C** to exit. Use **↑/↓** or **j/k** to scroll when the report is taller than the terminal; resizing and scrolling only redraw the screen. The cursor, input mode, and previous screen are restored on exit.
+
+Local log reads and remote requests have separate schedules. A slow quota request does not block local token updates. By default, each provider's quota is polled every **10 minutes plus 0–60 seconds of positive jitter**, rather than on every screen update. This is a conservative polling policy, not a provider-guaranteed safe interval.
+
+The same quota cache and cooldown apply to one-shot commands and live mode. Restarting aiusage or opening another instance with the same cache/configuration reuses them. The dashboard labels the time of the last successful quota snapshot; a failed refresh keeps those values and shows the next retry time.
+
+| Outcome | Next attempt |
+| --- | --- |
+| Success | Configured quota interval + 0–60 seconds |
+| HTTP 429 | At least 30 minutes; repeated failures double the wait, up to 6 hours |
+| HTTP 401 / 403 | At least 1 hour, with exponential backoff |
+| Other errors | At least the configured interval, with exponential backoff |
+
+`Retry-After`, as seconds or an HTTP date, can extend the wait further. Requests have a 15-second timeout and no immediate retry after throttling. An OAuth refresh is included in the same guard; a throttled Claude token refresh does not try a second endpoint. Cooldowns are saved **before** requesting, and concurrent instances share a lock. If the cache cannot be read or written, aiusage continues showing local tokens and reports the cache error without polling the provider.
+
+`--offline` reads only local logs and quota snapshots, even when a snapshot is stale; an empty cache is labelled accordingly. It also works without live mode. The cache stores quota results/timestamps, not access or refresh tokens:
+
+| Platform | Default quota cache |
+| --- | --- |
+| macOS | `~/Library/Caches/aiusage` |
+| Linux | `$XDG_CACHE_HOME/aiusage`, or `~/.cache/aiusage` |
+| Windows | `%LOCALAPPDATA%\aiusage\Cache` |
+
+Set `AIUSAGE_CACHE_DIR` to use another directory. Each provider's configured home has its own cached snapshot. Other applications and other machines do not share this cache; their requests still contribute to the provider's limits.
 
 ## Authentication and local files
 
@@ -149,6 +188,8 @@ The existing `today`, `days7`, `days30`, and `models` fields retain their raw to
 | `priced_tokens` / `unpriced_tokens` / `cost_reasons` | Priced coverage / unpriced coverage / reasons a cost could not be estimated |
 
 Top-level `pricing` records the price-check date, sources, and estimation basis. `cost_totals` aggregates costs across providers and includes an `incomplete` flag. Check `unpriced_tokens` or `incomplete` before treating an estimate as complete.
+
+Each provider's `quota` metadata includes `updated_at`, `next_refresh_at`, `cached`, and `status` (`ok`, `updating`, `backoff`, `offline`, or `cache-error`). Quota timestamps describe the saved remote snapshot, independently of the freshly read local tokens.
 
 ## Standalone executables
 

@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { displayWidth } from "../lib/render.js";
+import { parseOptions } from "../lib/cli.js";
 
 const command = fileURLToPath(new URL("../bin/aiusage.js", import.meta.url));
 
@@ -51,4 +52,23 @@ test("ASCII mode keeps data and column widths without Unicode decorations", () =
     assert.match(result.stdout, /3\.53M/);
     assert.ok(result.stdout.split("\n").every((line) => displayWidth(line) <= 80));
   }
+});
+
+test("live flags enforce the quota minimum and reject incompatible output before collecting", () => {
+  const options = parseOptions(["live", "--offline", "--interval=30", "--quota-interval", "1200"]);
+  assert.equal(options.live, true);
+  assert.equal(options.offline, true);
+  assert.equal(options.interval, 30_000);
+  assert.equal(options.quotaInterval, 1200_000);
+  for (const args of [["--live", "--json"], ["--live", "--interval", "1"], ["--quota-interval", "60"], ["--interval", "30"], ["--unknown"]]) {
+    const result = run(args);
+    assert.equal(result.status, 2);
+    assert.equal(result.stdout, "");
+    assert.ok(result.stderr.length > 0);
+    assert.equal(result.stderr.includes("\x1b"), false);
+  }
+  const piped = run(["--live", "--demo"]);
+  assert.equal(piped.status, 2);
+  assert.match(piped.stderr, /交互终端/);
+  assert.equal(piped.stdout, "");
 });

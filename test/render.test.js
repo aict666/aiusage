@@ -211,18 +211,20 @@ test("default output uses two rows per model without forcing a narrow layout", (
   const reports = demoReports(now);
   const text = render(reports, { now, width: 180 });
   assert.ok(Math.max(...text.split("\n").map(displayWidth)) > 62);
-  assert.ok(text.trimEnd().split("\n").length <= 24);
+  assert.ok(text.trimEnd().split("\n").length <= 26);
   assert.equal(text.includes("价格 2026-10-30"), false);
   assert.equal(text.includes("已知部分"), false);
   const tokens = text.split("本机 Token")[1].split("Token 含缓存")[0];
   assert.equal(tokens.includes("\n\n"), false);
-  assert.match(tokens, /Opus 5\.5\s+3\.53M \/ \$4\.55/);
-  assert.match(tokens, /缓存读\/写\s+3M \/ 353K/);
+  assert.match(tokens, /Opus 5\.5\s+│\s+3\.53M \/ \$4\.55/);
+  assert.match(tokens, /缓存读\/写\s+│\s+3M \/ 353K/);
+  assert.match(tokens, /今天 Token\/USD/);
+  assert.match(tokens, /┌[─┬]+┐/);
   const summaries = tokens.split("\n").filter((line) => /Opus|Sonnet|GPT|Grok 4/.test(line));
   const caches = tokens.split("\n").filter((line) => /读缓存|缓存读\/写/.test(line));
   assert.equal(summaries.length, 4);
   assert.equal(caches.length, 4);
-  const codex = text.split("  Codex  ")[1].split("  Grok  ")[0];
+  const codex = tokens.split(/Codex\s+│/)[1].split(/Grok\s+│/)[0];
   assert.equal(codex.includes("写缓存"), false);
   const detailed = render(reports, { now, width: 180, details: true });
   assert.ok(detailed.includes("写缓存"));
@@ -253,4 +255,17 @@ test("unknown or partial estimates remain explicit instead of showing zero cost"
   assert.equal(formatCost({ cost_usd: 2.5, priced_tokens: 1000, unpriced_tokens: 100 }), "$2.50+");
   assert.equal(formatCost({ cost_usd: 0.001, priced_tokens: 100, unpriced_tokens: 0 }), "<$0.01");
   assert.equal(formatCost({ cost_usd: 0, priced_tokens: 0, unpriced_tokens: 0 }), "$0.00");
+});
+
+test("saved quota snapshots keep their timestamp and clearly show a throttled retry", () => {
+  const now = new Date(2026, 9, 30, 15);
+  const reports = demoReports(now);
+  reports[0].quota = { updated_at: new Date(2026, 9, 30, 14, 30).toISOString(), next_refresh_at: new Date(2026, 9, 30, 15, 30).toISOString(), status: "backoff" };
+  reports[0].error = "HTTP 429";
+  const text = render(reports, { now, width: 120 });
+  assert.match(text, /额度快照 · Claude 14:30 !/);
+  assert.match(text, /HTTP 429 · 下次 今天 15:30/);
+  assert.match(text, /84%/);
+  const ascii = render(reports, { now, width: 120, ascii: true });
+  assert.doesNotMatch(ascii, /[━─│┌┬┐├┼┤└┴┘]/u);
 });

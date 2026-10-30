@@ -10,7 +10,7 @@ function fixture(t, { expired = false, flat = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), "aiusage 集成 "));
   const previous = {};
   const paths = {};
-  for (const [name, folder] of [["CLAUDE_CONFIG_DIR", "claude"], ["CODEX_HOME", "codex"], ["GROK_HOME", "grok"]]) {
+  for (const [name, folder] of [["CLAUDE_CONFIG_DIR", "claude"], ["CODEX_HOME", "codex"], ["GROK_HOME", "grok"], ["AIUSAGE_CACHE_DIR", "cache"]]) {
     previous[name] = process.env[name];
     paths[folder] = join(root, folder);
     mkdirSync(paths[folder]);
@@ -142,4 +142,36 @@ for (const flat of [false, true]) test(`refresh preserves credential metadata an
     assert.ok(readdirSync(directory).every((file) => !file.endsWith(".tmp")));
     if (process.platform !== "win32") assert.equal(statSync(join(directory, filename)).mode & 0o777, 0o600);
   }
+});
+
+test("Claude OAuth throttling is not retried on another endpoint or a subsequent local update", async (t) => {
+  const { now } = fixture(t, { expired: true });
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (url) => {
+    requests.push(url);
+    return new Response(null, { status: 429, headers: { "retry-after": "7200" } });
+  });
+  const [first] = await collect(now);
+  assert.equal(first.error, "HTTP 429");
+  assert.ok(Date.parse(first.quota.next_refresh_at) >= Date.now() + 7190_000);
+  await collect(now);
+  assert.deepEqual(requests.filter((url) => /claude|anthropic/.test(url)), ["https://platform.claude.com/v1/oauth/token"]);
+});
+
+test("offline collection reads token logs without accessing the provider endpoints", async (t) => {
+  const { now, requested } = fixture(t);
+  const reports = await collect(now, null, { offline: true });
+  assert.equal(requested.length, 0);
+  assert.deepEqual(reports.map((report) => report.tokens.today), [100, 250, 50]);
+  assert.ok(reports.every((report) => report.quota.status === "offline"));
+});
+
+test("cancelling a local log scan does not leave a rejected stream or request running", async (t) => {
+  const { now, requested } = fixture(t);
+  const controller = new AbortController();
+  const pending = collect(now, null, { offline: true, signal: controller.signal });
+  controller.abort();
+  const reports = await pending;
+  assert.equal(reports.length, 3);
+  assert.equal(requested.length, 0);
 });
