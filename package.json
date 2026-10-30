@@ -4,7 +4,7 @@
   "description": "Show Claude, Codex, and Grok plan quotas and local token usage in the terminal.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jax-yu/ai-quota.git"
+    "url": "git+https://github.com/aict666/aiusage.git"
   },
   "license": "MIT",
   "type": "module",
