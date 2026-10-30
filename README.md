@@ -59,7 +59,7 @@ Example values from `aiusage --demo`:
 
 These are sample values, not live usage. The CLI currently uses Chinese labels. `--ascii` changes the decorations, not the language.
 
-Default output uses compact columns and caps its content at 60 terminal columns, even in a wide terminal. Cache-write rows that are known to be zero in all three periods are hidden by default. Narrow terminals use grouped, wrapped output. CJK characters, combining characters, and common emoji are aligned by display width.
+The default table uses **two rows per model**: token totals and estimated USD costs on the first row, then cache reads/writes on the second. Models have no blank rows between them. Horizontal layout uses the available terminal width, and narrow terminals wrap as needed. CJK characters, combining characters, and common emoji are aligned by display width.
 
 ## Commands
 
@@ -67,7 +67,7 @@ Default output uses compact columns and caps its content at 60 terminal columns,
 | --- | --- |
 | `aiusage` | Show quotas, local tokens, cache usage, and estimated costs |
 | `aiusage --demo` | Preview with sample data, without reading credentials or logs or calling provider APIs |
-| `aiusage --details` | Also show input/output, cache-hit rates, zero cache-write rows, and full reset timestamps |
+| `aiusage --details` | Expand token, cost, input/output, cache-write, and cache-hit-rate metrics into separate rows |
 | `aiusage --json` | Output raw counts, usage breakdowns, pricing metadata, and cost coverage as JSON |
 | `aiusage --ascii` | Use ASCII progress bars, separators, and decorations |
 | `aiusage --no-color` | Disable colors |
@@ -101,8 +101,8 @@ When Claude or Grok access tokens expire, aiusage uses the locally stored refres
 Quotas come from the providers' usage endpoints. Each window shows used percentage, remaining percentage, and reset time.
 
 - Green: below 50% used. Yellow: 50% to below 80%. Red: 80% or more.
-- The default reset column shows a short countdown in minutes, hours, or days.
-- `--details` adds the full local reset timestamp and countdown. Resets today or tomorrow use the corresponding local-day label; later dates use month and day.
+- The reset column shows the full local timestamp and a countdown.
+- Resets today or tomorrow use the corresponding local-day label; later dates use month and day.
 
 These quota endpoints are undocumented and may require updates when the provider clients change.
 

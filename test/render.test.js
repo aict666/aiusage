@@ -119,7 +119,7 @@ test("report splits quota and tokens", () => {
   assert.equal(text.includes("1.6B"), true);
   assert.equal(text.includes("2,708,431"), false);
   assert.equal(text.includes("7 天"), true);
-  assert.match(text, /7 天\s+━+─+\s+84%\s+16%\s+\d+(?:小时|天)/);
+  assert.match(text, /7 天\s+━+─+\s+84%\s+16%\s+\d{2}-\d{2}/);
   assert.equal(text.includes("│"), false);
   assert.equal(text.indexOf("额度") < text.indexOf("Token"), true);
 });
@@ -206,13 +206,22 @@ test("cache and USD cost rows are visible by default and details adds input/outp
   }
 });
 
-test("large terminals keep compact columns and only one default explanation", () => {
+test("default output uses two rows per model without forcing a narrow layout", () => {
   const now = new Date(2026, 9, 30, 9);
   const reports = demoReports(now);
   const text = render(reports, { now, width: 180 });
-  assert.ok(text.split("\n").every((line) => displayWidth(line) <= 62));
+  assert.ok(Math.max(...text.split("\n").map(displayWidth)) > 62);
+  assert.ok(text.trimEnd().split("\n").length <= 24);
   assert.equal(text.includes("价格 2026-10-30"), false);
   assert.equal(text.includes("已知部分"), false);
+  const tokens = text.split("本机 Token")[1].split("Token 含缓存")[0];
+  assert.equal(tokens.includes("\n\n"), false);
+  assert.match(tokens, /Opus 5\.5\s+3\.53M \/ \$4\.55/);
+  assert.match(tokens, /缓存读\/写\s+3M \/ 353K/);
+  const summaries = tokens.split("\n").filter((line) => /Opus|Sonnet|GPT|Grok 4/.test(line));
+  const caches = tokens.split("\n").filter((line) => /读缓存|缓存读\/写/.test(line));
+  assert.equal(summaries.length, 4);
+  assert.equal(caches.length, 4);
   const codex = text.split("  Codex  ")[1].split("  Grok  ")[0];
   assert.equal(codex.includes("写缓存"), false);
   const detailed = render(reports, { now, width: 180, details: true });
@@ -220,6 +229,7 @@ test("large terminals keep compact columns and only one default explanation", ()
   assert.ok(detailed.includes("命中率"));
   assert.ok(detailed.includes("86.7%"));
   assert.ok(detailed.includes("今天 13:30"));
+  assert.ok(detailed.trimEnd().split("\n").length > text.trimEnd().split("\n").length);
 });
 
 test("cache hit rate uses prompt tokens rather than total tokens", () => {
