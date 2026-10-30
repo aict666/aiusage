@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -83,6 +83,48 @@ test("all providers read custom paths, BOM credentials, and CRLF logs", async (t
   assert.deepEqual(reports.map((report) => report.tokens.usage.today.cache_read_tokens), [30, 150, 20]);
   assert.deepEqual(reports.map((report) => report.tokens.usage.today.unpriced_tokens), [0, 0, 0]);
   assert.equal(reports[0].tokens.usage.today.cost_usd, 0.000714);
+});
+
+test("Claude merges message snapshots when requestId is absent", async (t) => {
+  const { paths, now } = fixture(t);
+  const path = join(paths.claude, "projects", "project with spaces", "session.jsonl");
+  const rows = [
+    { uuid: "snapshot-a", timestamp: new Date(now.getTime() - 500).toISOString(), message: { id: "message-2", model: "claude-sonnet-4-6", usage: { input_tokens: 10, cache_read_input_tokens: 70, cache_creation_input_tokens: 0, output_tokens: 5 } } },
+    { uuid: "snapshot-b", timestamp: now.toISOString(), message: { id: "message-2", model: "claude-sonnet-4-6", usage: { input_tokens: 10, cache_read_input_tokens: 70, cache_creation_input_tokens: 0, output_tokens: 20 } } },
+  ];
+  appendFileSync(path, rows.map((row) => JSON.stringify(row)).join("\r\n") + "\r\n");
+  const [claude] = await collect(now);
+  assert.equal(claude.tokens.today, 200);
+  assert.equal(claude.tokens.usage.today.cache_read_tokens, 100);
+  assert.equal(claude.tokens.usage.today.output_tokens, 60);
+});
+
+test("Codex counts a response once across rollouts and ignores cumulative usage fields", async (t) => {
+  const { paths, now } = fixture(t);
+  const first = { type: "token_usage_record", ordinal: 1, timestamp: new Date(now.getTime() - 500).toISOString(), payload: {
+    response_id: "response-2", model: "gpt-6.1-sol",
+    usage: { total_tokens: 120, input_tokens: 100, cached_input_tokens: 80, cache_write_input_tokens: 0, output_tokens: 20 },
+    turn_token_usage: { total_tokens: 12_000, input_tokens: 10_000, cached_input_tokens: 8_000, output_tokens: 2_000 },
+    thread_token_usage: { total_tokens: 120_000, input_tokens: 100_000, cached_input_tokens: 80_000, output_tokens: 20_000 },
+  } };
+  const last = { ...first, ordinal: 2, timestamp: now.toISOString(), payload: { ...first.payload, usage: { ...first.payload.usage, output_tokens: 40, total_tokens: 140 } } };
+  appendFileSync(join(paths.codex, "sessions", "session.jsonl"), JSON.stringify(first) + "\r\n");
+  writeFileSync(join(paths.codex, "sessions", "fork.jsonl"), JSON.stringify({ ...last, ordinal: 9, payload: { ...last.payload, model: undefined } }) + "\r\n");
+  const [, codex] = await collect(now);
+  assert.equal(codex.tokens.today, 390);
+  assert.equal(codex.tokens.usage.today.cache_read_tokens, 230);
+  assert.equal(codex.tokens.usage.today.output_tokens, 90);
+  assert.equal(codex.tokens.usage.today.priced_tokens, 390);
+});
+
+test("equal token amounts without response IDs remain separate calls", async (t) => {
+  const { paths, now } = fixture(t);
+  const row = { type: "token_usage_record", timestamp: now.toISOString(), payload: { model: "gpt-6.1-sol",
+    usage: { total_tokens: 120, input_tokens: 100, cached_input_tokens: 80, cache_write_input_tokens: 0, output_tokens: 20 } } };
+  appendFileSync(join(paths.codex, "sessions", "session.jsonl"), JSON.stringify(row) + "\n" + JSON.stringify(row) + "\n");
+  const [, codex] = await collect(now);
+  assert.equal(codex.tokens.today, 490);
+  assert.equal(codex.tokens.usage.today.cache_read_tokens, 310);
 });
 
 for (const flat of [false, true]) test(`refresh preserves credential metadata and file shape (flat=${flat})`, async (t) => {

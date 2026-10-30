@@ -59,7 +59,7 @@ Example values from `aiusage --demo`:
 
 These are sample values, not live usage. The CLI currently uses Chinese labels. `--ascii` changes the decorations, not the language.
 
-Tables adapt to the terminal width. Narrow terminals use grouped, wrapped output while retaining quotas, reset times, token breakdowns, and costs. CJK characters, combining characters, and common emoji are aligned by display width.
+Default output uses compact columns and caps its content at 60 terminal columns, even in a wide terminal. Cache-write rows that are known to be zero in all three periods are hidden by default. Narrow terminals use grouped, wrapped output. CJK characters, combining characters, and common emoji are aligned by display width.
 
 ## Commands
 
@@ -67,7 +67,7 @@ Tables adapt to the terminal width. Narrow terminals use grouped, wrapped output
 | --- | --- |
 | `aiusage` | Show quotas, local tokens, cache usage, and estimated costs |
 | `aiusage --demo` | Preview with sample data, without reading credentials or logs or calling provider APIs |
-| `aiusage --details` | Also show uncached input and output tokens |
+| `aiusage --details` | Also show input/output, cache-hit rates, zero cache-write rows, and full reset timestamps |
 | `aiusage --json` | Output raw counts, usage breakdowns, pricing metadata, and cost coverage as JSON |
 | `aiusage --ascii` | Use ASCII progress bars, separators, and decorations |
 | `aiusage --no-color` | Disable colors |
@@ -101,8 +101,8 @@ When Claude or Grok access tokens expire, aiusage uses the locally stored refres
 Quotas come from the providers' usage endpoints. Each window shows used percentage, remaining percentage, and reset time.
 
 - Green: below 50% used. Yellow: 50% to below 80%. Red: 80% or more.
-- Resets today or tomorrow use the corresponding local-day label; later dates use month and day.
-- Reset times include a countdown.
+- The default reset column shows a short countdown in minutes, hours, or days.
+- `--details` adds the full local reset timestamp and countdown. Resets today or tomorrow use the corresponding local-day label; later dates use month and day.
 
 These quota endpoints are undocumented and may require updates when the provider clients change.
 
@@ -110,15 +110,17 @@ These quota endpoints are undocumented and may require updates when the provider
 
 Tokens come from local logs, independently of the plan quotas. Today starts at local midnight. The 7-day and 30-day windows both include today.
 
-The terminal abbreviates counts using K, M, and B. Model rows show totals **including cached tokens**; do not add the cache detail rows again. Use `--details` for uncached input and output, or `--json` for raw numbers.
+The terminal abbreviates and rounds counts using K, M, and B. Model rows show totals **including cached tokens**; do not add the cache detail rows again. Use `--details` for uncached input and output, or `--json` for exact raw numbers.
 
 | Provider | Accounting |
 | --- | --- |
-| Claude | Input + cache writes + cache reads + output. Only the last snapshot of each request is counted. The model comes from that request. |
-| Codex | Per-call `total_tokens`. Cached input is already included. The model comes from the selected turn model or the usage record. |
+| Claude | Input + cache writes + cache reads + output. Only the last snapshot of each request is counted; message ID is the fallback when request ID is absent. The model comes from that request. |
+| Codex | Per-call `usage.total_tokens`, never cumulative turn/thread counters. When `response_id` is available, copied or repeated response records are counted once. The model comes from the selected turn model or the usage record. |
 | Grok | `prompt_tokens + completion_tokens`. Cached input is already included. When a usage record omits the model, the most recent model selection is used. |
 
 Cache reads can make Claude's token totals much larger than its uncached input and output alone.
+
+Cache reads are **hits accumulated across requests**, not unique cached content or cache storage size. Reusing a cached 100K-token prefix in ten requests contributes 1M cache-read tokens. `--details` shows the hit rate as cache reads divided by all prompt tokens, including writes and uncached input; output tokens are excluded. A rate is left unknown when the required counters are incomplete.
 
 ## Cost estimates
 

@@ -22,6 +22,7 @@ test("usage bars keep one width", () => {
   assert.equal(barText(-10), barText(0));
   assert.equal(barText(120), barText(100));
   assert.equal(barText(NaN), barText(null));
+  assert.ok(barText(1, 8).startsWith("━"));
 });
 
 test("terminal widths handle CJK, line drawing, ANSI, and graphemes", () => {
@@ -118,7 +119,7 @@ test("report splits quota and tokens", () => {
   assert.equal(text.includes("1.6B"), true);
   assert.equal(text.includes("2,708,431"), false);
   assert.equal(text.includes("7 天"), true);
-  assert.match(text, /7 天\s+━+─+\s+84%\s+16%\s+\d{2}-\d{2}/);
+  assert.match(text, /7 天\s+━+─+\s+84%\s+16%\s+\d+(?:小时|天)/);
   assert.equal(text.includes("│"), false);
   assert.equal(text.indexOf("额度") < text.indexOf("Token"), true);
 });
@@ -195,14 +196,45 @@ test("cache and USD cost rows are visible by default and details adds input/outp
   for (const width of [24, 40, 52, 60, 80, 120]) {
     for (const details of [false, true]) {
       const text = render(reports, { now, width, details });
-      assert.ok(/缓存读/u.test(text));
-      assert.ok(/API 估算/u.test(text));
+      assert.ok(/读缓存/u.test(text));
+      assert.ok(/估算 USD/u.test(text));
       assert.ok(/\$\d/u.test(text));
-      assert.ok(text.includes("非套餐账单"));
+      assert.ok(text.includes("非套餐扣费"));
       assert.ok(text.split("\n").every((line) => displayWidth(line) <= width), `overflow at ${width}, details=${details}`);
       if (details) assert.match(text, /未缓存/);
     }
   }
+});
+
+test("large terminals keep compact columns and only one default explanation", () => {
+  const now = new Date(2026, 9, 30, 9);
+  const reports = demoReports(now);
+  const text = render(reports, { now, width: 180 });
+  assert.ok(text.split("\n").every((line) => displayWidth(line) <= 62));
+  assert.equal(text.includes("价格 2026-10-30"), false);
+  assert.equal(text.includes("已知部分"), false);
+  const codex = text.split("  Codex  ")[1].split("  Grok  ")[0];
+  assert.equal(codex.includes("写缓存"), false);
+  const detailed = render(reports, { now, width: 180, details: true });
+  assert.ok(detailed.includes("写缓存"));
+  assert.ok(detailed.includes("命中率"));
+  assert.ok(detailed.includes("86.7%"));
+  assert.ok(detailed.includes("今天 13:30"));
+});
+
+test("cache hit rate uses prompt tokens rather than total tokens", () => {
+  const now = new Date();
+  const buckets = new TokenBuckets(now, "Codex");
+  buckets.add(now, 200, "gpt-6.1-sol", { total: 200, prompt_tokens: 100, input_tokens: 20, output_tokens: 100,
+    cache_read_tokens: 80, cache_write_tokens: 0, cache_write_short_tokens: 0, cache_write_long_tokens: 0, unclassified_tokens: 0, valid: true });
+  const report = new ProviderReport({ name: "Codex", tokens: buckets.totals() });
+  const text = render([report], { details: true });
+  assert.ok(text.includes("80.0%"));
+  assert.equal(text.includes("40.0%"), false);
+  buckets.add(now, 50, "gpt-6.1-sol");
+  const partial = render([new ProviderReport({ name: "Codex", tokens: buckets.totals() })], { details: true });
+  assert.equal(partial.includes("80.0%"), false);
+  assert.ok(partial.includes("80+"));
 });
 
 test("unknown or partial estimates remain explicit instead of showing zero cost", () => {
