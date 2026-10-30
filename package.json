@@ -1,6 +1,6 @@
 {
   "name": "ai-quota",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Show Claude, Codex, and Grok plan quotas and local token usage in the terminal.",
   "repository": {
     "type": "git",

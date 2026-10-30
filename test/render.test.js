@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { ProviderReport, Window, claudeUsageTotal } from "../lib/collect.js";
 import { version } from "../lib/cli.js";
-import { displayWidth, render, usageText } from "../lib/render.js";
+import { barText, displayWidth, render } from "../lib/render.js";
 import { TokenBuckets } from "../lib/time.js";
 
 test("version matches package.json", () => {
@@ -12,11 +12,11 @@ test("version matches package.json", () => {
 });
 
 test("usage bars keep one width", () => {
-  const low = usageText(5);
-  const high = usageText(84);
+  const low = barText(5);
+  const high = barText(84);
   assert.equal(displayWidth(low), displayWidth(high));
   assert.equal(low.startsWith("[#"), true);
-  assert.match(high, /84%/);
+  assert.equal(high.includes("%"), false);
 });
 
 test("longer token windows include today", () => {
@@ -53,6 +53,8 @@ test("report splits quota and tokens", () => {
   assert.equal(text.includes("额度"), true);
   assert.equal(text.includes("Token"), true);
   assert.equal(text.includes("2,708,431"), true);
+  assert.equal(text.includes("7 天"), true);
+  assert.match(text, /7 天\s+\[#+-+\]\s+84%\s+剩余\s+16%\s+重置 /);
   assert.equal(text.includes("│"), false);
   assert.equal(text.indexOf("额度") < text.indexOf("Token"), true);
 });

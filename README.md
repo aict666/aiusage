@@ -4,6 +4,20 @@
 
 已经用对应的 CLI 登录过就可以直接运行。程序只读本机登录和日志，没有自己的账号，也没有遥测。
 
+```text
+额度
+
+Claude  pro
+  5 小时      [#---------------]    6%   剩余  94%   重置 今天 13:30，4 小时后
+  7 天        [#############---]   84%   剩余  16%   重置 11-01 03:00，41 小时后
+
+Token
+
+  Claude  今天     3,527,818    近 7 天 1,667,005,719    近 30 天 1,987,980,389
+  Codex   今天             0    近 7 天   963,078,142    近 30 天 1,878,034,758
+  Grok    今天     9,135,015    近 7 天   106,886,392    近 30 天   119,058,267
+```
+
 ## 安装
 
 macOS 用 Homebrew。装上的是独立可执行文件，不需要 Python，也不需要 Node.js：
@@ -39,7 +53,7 @@ npx github:jax-yu/ai-quota
 
 自定义目录时认这几个环境变量：`CLAUDE_CONFIG_DIR`、`CODEX_HOME`、`GROK_HOME`。Claude 也可以用 `CLAUDE_CODE_OAUTH_TOKEN`。
 
-Grok 的访问令牌大约 6 小时过期。过期时程序会用本机的 refresh token 换新令牌，并写回 `~/.grok/auth.json`。
+Claude 和 Grok 的访问令牌过期时，程序会用本机的 refresh token 换新令牌并写回原处。Claude 写回钥匙串或 `~/.claude/.credentials.json`，Grok 写回 `~/.grok/auth.json`。用环境变量提供的令牌不会被改写。
 
 ## 命令
 
