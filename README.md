@@ -1,6 +1,6 @@
 # aiusage
 
-在终端查看 Claude、Codex、Grok 的套餐额度和本机 token 用量。命令名是 `ai-quota`。
+在终端查看 Claude、Codex、Grok 的套餐额度和本机 token 用量。
 
 它读取你已经登录过的 CLI，不创建自己的账号，也不上传日志或令牌。
 
@@ -32,8 +32,8 @@ Token
 macOS 用 Homebrew。装上的是独立可执行文件，不需要 Python，也不需要 Node.js。
 
 ```bash
-brew install aict666/tap/ai-quota
-ai-quota
+brew install aict666/tap/aiusage
+aiusage
 ```
 
 从源码运行需要 Node.js 18 或更高版本，没有额外依赖：
@@ -41,7 +41,7 @@ ai-quota
 ```bash
 git clone https://github.com/aict666/aiusage.git
 cd aiusage
-node bin/ai-quota.js
+node bin/aiusage.js
 ```
 
 也可以：
@@ -67,10 +67,10 @@ Claude 和 Grok 的访问令牌过期时，程序会用本机的 refresh token �
 ## 命令
 
 ```bash
-ai-quota
-ai-quota --json
-ai-quota --no-color
-ai-quota --version
+aiusage
+aiusage --json
+aiusage --no-color
+aiusage --version
 ```
 
 终端里会同时读取三个服务。某个服务的接口失败时退出码为 1，已经读到的结果仍会打印。三个都未登录时退出码也是 1。
@@ -91,7 +91,7 @@ ai-quota --version
 
 Token 来自本机日志，不是套餐剩余额度。按本地时区切分。近 7 天、近 30 天都包含今天。
 
-终端按模型分行，并用万、亿缩短数字。`ai-quota --json` 里仍是原始 token 数，并带每个模型的明细。
+终端按模型分行，并用万、亿缩短数字。`aiusage --json` 里仍是原始 token 数，并带每个模型的明细。
 
 - Claude：每次请求的输入、缓存写入、缓存读取和输出。同一次请求只取最后一条。模型名来自这条请求。
 - Codex：每次调用的 `total_tokens`。缓存已经包含在输入里。模型名来自这一轮选定的模型。
@@ -105,11 +105,11 @@ Token 来自本机日志，不是套餐剩余额度。按本地时区切分。�
 
 ## English
 
-aiusage prints Claude, Codex, and Grok plan quotas, plus local token totals for today, 7 days, and 30 days. The command is `ai-quota`.
+aiusage prints Claude, Codex, and Grok plan quotas, plus local token totals for today, 7 days, and 30 days.
 
 ```bash
-brew install aict666/tap/ai-quota
-ai-quota
+brew install aict666/tap/aiusage
+aiusage
 ```
 
-The Homebrew package is a standalone binary. Node.js 18 or newer can also run `node bin/ai-quota.js` or `npx github:aict666/aiusage`. JSON output keeps raw token counts. The terminal shows 万 and 亿, split by model.
+The Homebrew package is a standalone binary. Node.js 18 or newer can also run `node bin/aiusage.js` or `npx github:aict666/aiusage`. JSON output keeps raw token counts. The terminal shows 万 and 亿, split by model.

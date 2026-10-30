@@ -1,6 +1,6 @@
 {
-  "name": "ai-quota",
-  "version": "0.1.3",
+  "name": "aiusage",
+  "version": "0.2.0",
   "description": "Show Claude, Codex, and Grok plan quotas and local token usage in the terminal.",
   "repository": {
     "type": "git",
@@ -9,7 +9,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "ai-quota": "./bin/ai-quota.js"
+    "aiusage": "./bin/aiusage.js"
   },
   "files": [
     "bin",
@@ -21,7 +21,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "start": "node ./bin/ai-quota.js",
+    "start": "node ./bin/aiusage.js",
     "test": "node --test"
   }
 }
