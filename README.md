@@ -1,6 +1,6 @@
 # aiusage
 
-在 macOS、Linux、Windows 的终端查看 Claude、Codex、Grok 的套餐额度和本机 token 用量。
+在 macOS、Linux、Windows 的终端查看 Claude、Codex、Grok 的套餐额度、本机 Token、缓存用量和 API 等价费用。
 
 它读取你已经登录过的 CLI，不创建自己的账号，也不上传日志或令牌。
 
@@ -19,11 +19,30 @@
   服务    模型                            今天         近 7 天        近 30 天
   ────────────────────────────────────────────────────────────────────────────
   Claude  Opus 5.5                       3.53M           1.66B           1.99B
-          Sonnet 4.6                      124K            120M            140M
-  Codex   GPT-6.1 Sol                        0            963M           1.88B
-  Grok    Grok 4.7                       11.7M            107M            122M
+            缓存读取                        3M           1.41B           1.69B
+            缓存写入                      353K            166M            199M
+            API 估算                     $4.55       $2,142.77       $2,567.10
 
-  本机日志 · 含缓存 · 近 7 / 30 天均含今天
+          Sonnet 4.6                      124K            120M            140M
+            缓存读取                      105K            102M            119M
+            缓存写入                     12.4K             12M             14M
+            API 估算                     $0.14         $131.40         $153.30
+
+  Codex   GPT-6.1 Sol                        0            963M           1.88B
+            缓存读取                         0            819M            1.6B
+            缓存写入                         0               0               0
+            API 估算                     $0.00         $524.84       $1,024.60
+
+  Grok    Grok 4.7                       11.7M            107M            122M
+            缓存读取                     9.96M           90.9M            104M
+            缓存写入                         0               0               0
+            API 估算                     $9.43          $86.13          $98.21
+  ────────────────────────────────────────────────────────────────────────────
+  合计    API 估算 / USD                $14.12       $2,885.14       $3,843.21
+
+  模型行是 Token 合计，已含缓存 · 近 7 / 30 天均含今天
+  费用按 API 标准价折算 USD，非套餐账单 · 价格 2026-10-30
+  + 表示已知部分；— 表示价格或日志明细不足
 ```
 
 上面的数字只是示例。
@@ -94,6 +113,7 @@ aiusage
 aiusage --json
 aiusage --demo
 aiusage --ascii
+aiusage --details
 aiusage --no-color
 aiusage --version
 ```
@@ -122,13 +142,39 @@ aiusage --version
 
 Token 来自本机日志，不是套餐剩余额度。按本地时区切分。近 7 天、近 30 天都包含今天。
 
-终端按模型分行，并用 K、M、B 缩短数字。`aiusage --json` 里仍是原始 token 数，并带每个模型的明细。
+终端按模型分行，并用 K、M、B 缩短数字。每个模型下单列缓存读取、缓存写入，以及今天、近 7 天、近 30 天的 API 等价费用。模型行显示的 Token 合计已经包含缓存，不能再把缓存明细加一次。`aiusage --details` 另外显示未缓存输入和输出；`aiusage --json` 保留原始数字和各模型明细。
 
 - Claude：每次请求的输入、缓存写入、缓存读取和输出。同一次请求只取最后一条。模型名来自这条请求。
 - Codex：每次调用的 `total_tokens`。缓存已经包含在输入里。模型名来自这一轮选定的模型。
 - Grok：每次推理的 `prompt_tokens + completion_tokens`。缓存已经包含在输入里。日志里单次推理不带模型名，所以沿用最近一次模型切换。
 
 缓存读取会让 Claude 的合计明显变大。
+
+## 费用怎么算
+
+金额以 **USD** 显示，是把本机 Token 按当前官方 **Standard / global API 单价**折算的参考值，用于比较调用成本。它不代表 Claude Pro/Max、ChatGPT/Codex、SuperGrok 的实际扣费，也不包含套餐月费、工具调用、税费、Fast/Ultrafast 等速度档位和区域加价。
+
+- 未缓存输入、输出、缓存读取、缓存写入分别计价，不用 Token 合计乘同一个单价。
+- Claude 的 5 分钟与 1 小时缓存写入分开计价；Codex 支持记录里的 30 分钟与 12 小时缓存写入明细。只有写入总量、没有时长时，该条费用不会猜测。
+- 长上下文价格根据**单次请求的总输入**（包括缓存）判断；不会因为近 30 天总量很大，就给全部记录加价。
+- 使用推理 Token 明细时，不会把已包含在输出中的推理 Token 再加一次。
+- `—` 表示无法取得价格或所需的日志明细；`123M+`、`$12.34+` 表示已知部分，完整结果可能更高。已知没有消耗的时段显示 `0` 和 `$0.00`。小于一美分的完整费用显示 `<$0.01`。
+- 价格表随程序一起打包，不会在每次运行时联网查价。当前核对日期为 **2026-10-30**；未知模型显示无法估算，不套用名称相似的模型价格。过去的调用也按这份价格表折算，不追溯历史调价或私有折扣。
+
+价格来源：[Claude 官方定价](https://platform.claude.com/docs/en/about-claude/pricing)、[OpenAI 官方定价](https://developers.openai.com/api/docs/pricing)与 [xAI 官方定价](https://docs.x.ai/developers/pricing)。OpenAI 缓存写入的分类计算见[官方缓存说明](https://developers.openai.com/api/docs/guides/prompt-caching#monitor-cache-performance)。
+
+JSON 在已有 `today`、`days7`、`days30`、`models` 字段之外，增加 `tokens.usage` 和 `models[].usage`，每个时段包含：
+
+| 字段 | 含义 |
+| --- | --- |
+| `input_tokens` / `output_tokens` | 未缓存输入 / 输出 |
+| `cache_read_tokens` / `cache_write_tokens` | 已知缓存读取 / 写入数量 |
+| `cache_write_short_tokens` / `cache_write_long_tokens` | 写入时长明细：Claude 5m/1h，Codex 30m/12h；包含在写入总量中 |
+| `unclassified_tokens` / `missing` | 无法拆分的 Token 数 / 统计不完整的明细字段 |
+| `cost_usd` | 已能估算的费用部分 |
+| `priced_tokens` / `unpriced_tokens` / `cost_reasons` | 已计价 / 未计价覆盖量 / 无法计价的原因 |
+
+顶层 `pricing` 给出价格核对日期、来源和计算口径，`cost_totals` 给出全部服务的费用合计及 `incomplete` 标志。判断完整费用时请检查 `unpriced_tokens` 或 `incomplete`，不要把只有 `cost_usd` 的部分结果当成完整账单。
 
 ## 开发与构建
 
@@ -148,11 +194,11 @@ npm run build -- --all
 
 ## English
 
-aiusage prints Claude, Codex, and Grok plan quotas, plus local token totals for today, 7 days, and 30 days on macOS, Linux, and Windows.
+aiusage prints Claude, Codex, and Grok plan quotas, local token totals, cache reads/writes, and API-equivalent costs for today, 7 days, and 30 days on macOS, Linux, and Windows.
 
 ```bash
 brew install aict666/tap/aiusage
 aiusage
 ```
 
-The Homebrew package is a standalone macOS binary. All three platforms can install with `npm install --global github:aict666/aiusage` or run from source with Node.js 18 or newer. CI builds standalone macOS ARM64/x64, Linux glibc ARM64/x64, and Windows x64 executables. Existing older Releases contain only macOS binaries; new build artifacts are available from Actions. JSON output keeps raw token counts. The terminal shows K, M, and B, split by model. Tables adapt to the terminal width. Use `aiusage --demo` to preview the layout without credentials, logs, or API calls, and `--ascii --no-color` for older consoles.
+The Homebrew package is a standalone macOS binary. All three platforms can install with `npm install --global github:aict666/aiusage` or run from source with Node.js 18 or newer. CI builds standalone macOS ARM64/x64, Linux glibc ARM64/x64, and Windows x64 executables. Existing older Releases contain only macOS binaries; new build artifacts are available from Actions. JSON output keeps raw token counts and adds usage breakdowns, pricing provenance, and estimated cost coverage. Costs use current standard global API rates in USD, not subscription bills. Unknown prices or missing usage details stay explicitly unpriced. Use `--details` for uncached input/output, `--demo` to preview without credentials, logs, or API calls, and `--ascii --no-color` for older consoles.

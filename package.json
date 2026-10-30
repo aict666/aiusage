@@ -1,6 +1,6 @@
 {
   "name": "aiusage",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Show Claude, Codex, and Grok plan quotas and local token usage in the terminal.",
   "repository": {
     "type": "git",

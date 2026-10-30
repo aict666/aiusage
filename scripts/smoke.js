@@ -17,6 +17,8 @@ const run = (args) => {
 const data = JSON.parse(run(["--demo", "--json"]));
 assert.equal(data.providers.length, 3);
 assert.equal(data.providers[0].tokens.models[0].today, 3_527_818);
+assert.ok(data.providers[0].tokens.usage.today.cache_read_tokens > 0);
+assert.ok(data.cost_totals.today.cost_usd > 0);
 const text = run(["--demo", "--ascii", "--no-color"]);
 assert.match(text, /Sonnet 4\.6/);
 assert.match(text, /#+-+/);

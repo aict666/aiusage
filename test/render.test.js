@@ -5,7 +5,7 @@ import test from "node:test";
 import { ProviderReport, Window, claudeUsageTotal } from "../lib/collect.js";
 import { version } from "../lib/cli.js";
 import { demoReports } from "../lib/demo.js";
-import { barText, displayWidth, formatTokens, pad, render, shortModel, truncate } from "../lib/render.js";
+import { barText, displayWidth, formatCost, formatTokens, pad, render, shortModel, truncate } from "../lib/render.js";
 import { TokenBuckets } from "../lib/time.js";
 
 test("version matches package.json", () => {
@@ -43,7 +43,8 @@ test("longer token windows include today", () => {
   buckets.add(new Date(now.getTime() - 3 * 86400000), 20);
   buckets.add(new Date(now.getTime() - 10 * 86400000), 30);
   buckets.add(new Date(now.getTime() - 40 * 86400000), 40);
-  assert.deepEqual(buckets.totals(), {
+  const totals = buckets.totals();
+  assert.deepEqual({ today: totals.today, days7: totals.days7, days30: totals.days30, models: totals.models.map(({ usage, ...row }) => row) }, {
     today: 10,
     days7: 30,
     days30: 60,
@@ -186,4 +187,28 @@ test("no providers has a readable empty state", () => {
   assert.match(text, /暂无服务数据/);
   assert.match(text, /暂无本机 Token 记录/);
   assert.equal(text.includes("Infinity"), false);
+});
+
+test("cache and USD cost rows are visible by default and details adds input/output", () => {
+  const now = new Date(2026, 9, 30, 9);
+  const reports = demoReports(now);
+  for (const width of [24, 40, 52, 60, 80, 120]) {
+    for (const details of [false, true]) {
+      const text = render(reports, { now, width, details });
+      assert.ok(/缓存读/u.test(text));
+      assert.ok(/API 估算/u.test(text));
+      assert.ok(/\$\d/u.test(text));
+      assert.ok(text.includes("非套餐账单"));
+      assert.ok(text.split("\n").every((line) => displayWidth(line) <= width), `overflow at ${width}, details=${details}`);
+      if (details) assert.match(text, /未缓存/);
+    }
+  }
+});
+
+test("unknown or partial estimates remain explicit instead of showing zero cost", () => {
+  assert.equal(formatCost(null), "—");
+  assert.equal(formatCost({ cost_usd: 0, priced_tokens: 0, unpriced_tokens: 100 }), "—");
+  assert.equal(formatCost({ cost_usd: 2.5, priced_tokens: 1000, unpriced_tokens: 100 }), "$2.50+");
+  assert.equal(formatCost({ cost_usd: 0.001, priced_tokens: 100, unpriced_tokens: 0 }), "<$0.01");
+  assert.equal(formatCost({ cost_usd: 0, priced_tokens: 0, unpriced_tokens: 0 }), "$0.00");
 });

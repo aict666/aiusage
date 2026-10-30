@@ -38,17 +38,18 @@ function fixture(t, { expired = false, flat = false } = {}) {
   const jsonl = (path, rows) => writeFileSync(path, "\uFEFF" + rows.map((row) => JSON.stringify(row)).join("\r\n") + "\r\n");
   mkdirSync(join(paths.claude, "projects", "project with spaces"), { recursive: true });
   jsonl(join(paths.claude, "projects", "project with spaces", "session.jsonl"), [
-    { requestId: "request", timestamp: now.toISOString(), message: { model: "claude-sonnet-4-6", usage: { input_tokens: 10, cache_creation_input_tokens: 20, cache_read_input_tokens: 30, output_tokens: 40 } } },
+    { requestId: "request", timestamp: new Date(now.getTime() - 1_000).toISOString(), message: { model: "claude-sonnet-4-6", usage: { input_tokens: 10, cache_creation_input_tokens: 20, cache_creation: { ephemeral_5m_input_tokens: 20 }, cache_read_input_tokens: 30, output_tokens: 1 } } },
+    { requestId: "request", timestamp: now.toISOString(), message: { model: "claude-sonnet-4-6", usage: { input_tokens: 10, cache_creation_input_tokens: 20, cache_creation: { ephemeral_5m_input_tokens: 20 }, cache_read_input_tokens: 30, output_tokens: 40 } } },
   ]);
   mkdirSync(join(paths.codex, "sessions"));
   jsonl(join(paths.codex, "sessions", "session.jsonl"), [
     { type: "turn_context", payload: { model: "gpt-6.1-sol" } },
-    { type: "token_usage_record", timestamp: now.toISOString(), payload: { usage: { total_tokens: 250 } } },
+    { type: "token_usage_record", timestamp: now.toISOString(), payload: { usage: { total_tokens: 250, input_tokens: 200, cached_input_tokens: 150, cache_write_input_tokens: 0, output_tokens: 50 } } },
   ]);
   mkdirSync(join(paths.grok, "logs"));
   jsonl(join(paths.grok, "logs", "unified.jsonl"), [
     { msg: "model changed", ctx: { current_model_id: "grok-4.7" } },
-    { ts: now.toISOString(), ctx: { prompt_tokens: 30, completion_tokens: 20 } },
+    { ts: now.toISOString(), ctx: { prompt_tokens: 30, cached_prompt_tokens: 20, completion_tokens: 20 } },
   ]);
   const requested = [];
   t.mock.method(globalThis, "fetch", async (url, options) => {
@@ -79,6 +80,9 @@ test("all providers read custom paths, BOM credentials, and CRLF logs", async (t
     { name: "Grok", skipped: false, error: null, today: 50 },
   ]);
   assert.deepEqual(reports.map((report) => report.tokens.models[0].model), ["claude-sonnet-4-6", "gpt-6.1-sol", "grok-4.7"]);
+  assert.deepEqual(reports.map((report) => report.tokens.usage.today.cache_read_tokens), [30, 150, 20]);
+  assert.deepEqual(reports.map((report) => report.tokens.usage.today.unpriced_tokens), [0, 0, 0]);
+  assert.equal(reports[0].tokens.usage.today.cost_usd, 0.000714);
 });
 
 for (const flat of [false, true]) test(`refresh preserves credential metadata and file shape (flat=${flat})`, async (t) => {

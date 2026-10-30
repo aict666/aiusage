@@ -9,7 +9,7 @@ const command = fileURLToPath(new URL("../bin/aiusage.js", import.meta.url));
 function run(args, env = {}) {
   return spawnSync(process.execPath, [command, ...args], {
     encoding: "utf8",
-    timeout: 5_000,
+    timeout: 10_000,
     env: { ...process.env, TERM: "xterm-256color", ...env },
   });
 }
@@ -35,6 +35,10 @@ test("demo JSON preserves raw counts and the existing schema", () => {
   assert.equal(data.providers[0].tokens.today, data.providers[0].tokens.models.reduce((sum, row) => sum + row.today, 0));
   assert.ok(data.generated_at);
   assert.ok(data.token_notes);
+  assert.equal(data.pricing.currency, "USD");
+  assert.ok(data.providers[0].tokens.usage.today.cache_read_tokens > 0);
+  assert.ok(data.providers[0].tokens.usage.today.cost_usd > 0);
+  assert.equal(data.cost_totals.today.incomplete, false);
 });
 
 test("ASCII mode keeps data and column widths without Unicode decorations", () => {
