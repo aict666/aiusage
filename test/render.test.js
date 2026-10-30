@@ -47,12 +47,13 @@ test("token totals keep each model", () => {
   );
 });
 
-test("large token counts use 万 and 亿", () => {
+test("large token counts use K, M, and B", () => {
   assert.equal(formatTokens(0), "0");
-  assert.equal(formatTokens(9999), "9,999");
-  assert.equal(formatTokens(10000), "1万");
-  assert.equal(formatTokens(3_527_818), "352.8万");
-  assert.equal(formatTokens(1_661_061_805), "16.61亿");
+  assert.equal(formatTokens(999), "999");
+  assert.equal(formatTokens(1000), "1K");
+  assert.equal(formatTokens(3_527_818), "3.53M");
+  assert.equal(formatTokens(11_716_325), "11.7M");
+  assert.equal(formatTokens(1_661_061_805), "1.66B");
   assert.equal(shortModel("claude-opus-5-5"), "Opus 5.5");
   assert.equal(shortModel("claude-sonnet-4-6"), "Sonnet 4.6");
   assert.equal(shortModel("gpt-6.1-sol"), "GPT-6.1 Sol");
@@ -92,8 +93,8 @@ test("report splits quota and tokens", () => {
   assert.equal(text.includes("Token"), true);
   assert.equal(text.includes("Opus 5.5"), true);
   assert.equal(text.includes("Sonnet 4.6"), true);
-  assert.equal(text.includes("260万"), true);
-  assert.equal(text.includes("16亿"), true);
+  assert.equal(text.includes("2.6M"), true);
+  assert.equal(text.includes("1.6B"), true);
   assert.equal(text.includes("2,708,431"), false);
   assert.equal(text.includes("7 天"), true);
   assert.match(text, /7 天\s+\[#+-+\]\s+84%\s+剩余\s+16%\s+重置 /);

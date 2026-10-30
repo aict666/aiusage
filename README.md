@@ -19,10 +19,10 @@ Grok  SuperGrok
 
 Token
 
-  Claude  Opus 5.5     今天   352.8万   近 7 天    16.61亿   近 30 天    19.88亿
-          Sonnet 4.6   今天    12.4万   近 7 天     1.20亿   近 30 天     1.40亿
-  Codex   GPT-6.1 Sol  今天        0   近 7 天     9.63亿   近 30 天    18.78亿
-  Grok    Grok 4.7     今天   1171万   近 7 天     1.07亿   近 30 天     1.22亿
+  Claude  Opus 5.5     今天    3.53M   近 7 天     1.66B   近 30 天     1.99B
+          Sonnet 4.6   今天     124K   近 7 天      120M   近 30 天      140M
+  Codex   GPT-6.1 Sol  今天        0   近 7 天      963M   近 30 天     1.88B
+  Grok    Grok 4.7     今天    11.7M   近 7 天      107M   近 30 天      122M
 ```
 
 上面的数字只是示例。
@@ -91,7 +91,7 @@ aiusage --version
 
 Token 来自本机日志，不是套餐剩余额度。按本地时区切分。近 7 天、近 30 天都包含今天。
 
-终端按模型分行，并用万、亿缩短数字。`aiusage --json` 里仍是原始 token 数，并带每个模型的明细。
+终端按模型分行，并用 K、M、B 缩短数字。`aiusage --json` 里仍是原始 token 数，并带每个模型的明细。
 
 - Claude：每次请求的输入、缓存写入、缓存读取和输出。同一次请求只取最后一条。模型名来自这条请求。
 - Codex：每次调用的 `total_tokens`。缓存已经包含在输入里。模型名来自这一轮选定的模型。
@@ -112,4 +112,4 @@ brew install aict666/tap/aiusage
 aiusage
 ```
 
-The Homebrew package is a standalone binary. Node.js 18 or newer can also run `node bin/aiusage.js` or `npx github:aict666/aiusage`. JSON output keeps raw token counts. The terminal shows 万 and 亿, split by model.
+The Homebrew package is a standalone binary. Node.js 18 or newer can also run `node bin/aiusage.js` or `npx github:aict666/aiusage`. JSON output keeps raw token counts. The terminal shows K, M, and B, split by model.
