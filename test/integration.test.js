@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -174,4 +175,27 @@ test("cancelling a local log scan does not leave a rejected stream or request ru
   const reports = await pending;
   assert.equal(reports.length, 3);
   assert.equal(requested.length, 0);
+});
+
+test("cancelling after files open waits for the underlying file handles to close", async (t) => {
+  const { now } = fixture(t);
+  const controller = new AbortController();
+  const active = new Set();
+  let opened = 0;
+  const open = fs.open, close = fs.close;
+  t.mock.method(fs, "open", (...args) => {
+    const callback = args.pop();
+    open(...args, (error, fd) => {
+      if (!error) { active.add(fd); opened++; }
+      callback(error, fd);
+      if (!error) controller.abort();
+    });
+  });
+  t.mock.method(fs, "close", (fd, callback) => close(fd, (error) => {
+    if (!error) active.delete(fd);
+    callback(error);
+  }));
+  await collect(now, null, { offline: true, signal: controller.signal });
+  assert.ok(opened > 0);
+  assert.equal(active.size, 0);
 });
