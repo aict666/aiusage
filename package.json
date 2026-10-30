@@ -15,7 +15,8 @@
     "bin",
     "lib",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "README.zh-CN.md"
   ],
   "engines": {
     "node": ">=18"
