@@ -96,9 +96,9 @@ aiusage --live --demo
 
 `live` is also accepted as an alias for `--live`. Live mode requires an interactive terminal and cannot be combined with `--json`. Press **q** or **Ctrl+C** to exit. Use **↑/↓** or **j/k** to scroll when the report is taller than the terminal; resizing and scrolling only redraw the screen. The cursor, input mode, and previous screen are restored on exit.
 
-Local log reads and remote requests have separate schedules. A slow quota request does not block local token updates. By default, each provider's quota is polled every **10 minutes plus 0–60 seconds of positive jitter**, rather than on every screen update. This is a conservative polling policy, not a provider-guaranteed safe interval.
+Local log reads and remote requests have separate timers. Quotas continue refreshing even while a log scan is running, and a completed quota request updates the screen immediately. Each log scan reads a finite snapshot; records appended during the scan appear on the next read. By default, each provider's quota is polled every **10 minutes plus 0–60 seconds of positive jitter**, rather than on every screen update. This is a conservative polling policy, not a provider-guaranteed safe interval.
 
-The same quota cache and cooldown apply to one-shot commands and live mode. Restarting aiusage or opening another instance with the same cache/configuration reuses them. The dashboard labels the time of the last successful quota snapshot; a failed refresh keeps those values and shows the next retry time.
+The same quota cache and cooldown apply to one-shot commands and live mode. Restarting aiusage or opening another instance with the same cache/configuration reuses them. The dashboard labels the time of the last successful quota snapshot; a failed refresh keeps those values and shows the next retry time. The live footer shows the countdown to the next quota update or indicates that an update is in progress. Its once-per-second redraw does not read logs or send API requests.
 
 | Outcome | Next attempt |
 | --- | --- |

@@ -45,6 +45,7 @@ test("simultaneous instances share the reservation and never make duplicate requ
 test("a slow quota endpoint never blocks local live updates or starts overlapping requests", async (t) => {
   const { options } = fixture(t);
   const cache = new QuotaCache({ ...options, background: true });
+  t.after(() => cache.stop());
   let release, quotaReads = 0, tokenReads = 0;
   const providers = [["Claude", async () => {
     quotaReads++;
@@ -61,6 +62,77 @@ test("a slow quota endpoint never blocks local live updates or starts overlappin
   const [done] = await collectProviders(providers, new Date(), null, { quotaCache: cache });
   assert.equal(done.plan, "pro");
   assert.equal(quotaReads, 1);
+});
+
+function scheduler(options, advance) {
+  const timers = new Map();
+  let sequence = 0;
+  return {
+    timers,
+    setTimer(callback, wait) {
+      const key = ++sequence;
+      timers.set(key, { at: options.now() + wait, callback });
+      return key;
+    },
+    clearTimer(key) { timers.delete(key); },
+    async elapse(ms) {
+      advance(ms);
+      const due = [...timers.entries()].filter(([, timer]) => timer.at <= options.now());
+      for (const [key, timer] of due) {
+        timers.delete(key);
+        await timer.callback();
+      }
+    },
+  };
+}
+
+test("background quotas keep refreshing for multiple cycles without any further local reads", async (t) => {
+  const { options, advance } = fixture(t);
+  const clock = scheduler(options, advance);
+  const cache = new QuotaCache({ ...options, ...clock, background: true });
+  t.after(() => cache.stop());
+  let reads = 0;
+  const updates = [];
+  cache.subscribe((change) => updates.push(change.result));
+  await cache.get("Claude", async () => ["pro", [{ label: "5 小时", usedPercent: ++reads, resetsAt: null }]]);
+  await cache.drain();
+  assert.equal(reads, 1);
+  await clock.elapse(MIN_QUOTA_INTERVAL - 1);
+  assert.equal(reads, 1);
+  await clock.elapse(1);
+  assert.equal(reads, 2);
+  assert.equal(updates.at(-1).windows[0].usedPercent, 2);
+  await clock.elapse(MIN_QUOTA_INTERVAL);
+  assert.equal(reads, 3);
+  assert.equal(updates.at(-1).windows[0].usedPercent, 3);
+  cache.stop();
+  assert.equal(clock.timers.size, 0);
+  await clock.elapse(MIN_QUOTA_INTERVAL);
+  assert.equal(reads, 3);
+});
+
+test("the independent quota timer honors persisted throttling and never polls on a clock tick", async (t) => {
+  const { options, advance } = fixture(t);
+  const clock = scheduler(options, advance);
+  const cache = new QuotaCache({ ...options, ...clock, background: true });
+  t.after(() => cache.stop());
+  let reads = 0;
+  const load = async () => {
+    reads++;
+    if (reads > 1) throw Object.assign(new Error("HTTP 429"), { code: 429, retryAt: options.now() + 3600_000 });
+    return result();
+  };
+  await cache.get("Claude", load);
+  await cache.drain();
+  await clock.elapse(MIN_QUOTA_INTERVAL);
+  assert.equal(reads, 2);
+  for (let index = 0; index < 100; index++) {
+    await cache.get("Claude", load);
+    await clock.elapse(15_000);
+  }
+  assert.equal(reads, 2);
+  await clock.elapse(3600_000 - 100 * 15_000);
+  assert.equal(reads, 3);
 });
 
 test("429 preserves good values, waits at least 30 minutes, and doubles after another failure", async (t) => {

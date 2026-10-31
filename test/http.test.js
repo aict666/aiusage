@@ -39,3 +39,28 @@ test("a stalled provider is aborted at the request deadline", async (t) => {
   }));
   await assert.rejects(httpJson("https://example.test", { timeoutMs: 5 }), /请求超时/);
 });
+
+test("a stalled error body cannot hide HTTP 429 or its Retry-After", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => ({
+    ok: false, status: 429, headers: new Headers({ "retry-after": "3600" }),
+    body: { cancel: () => new Promise(() => {}) },
+  }));
+  await assert.rejects(httpJson("https://example.test", { timeoutMs: 5 }), (error) => {
+    assert.equal(error.code, 429);
+    assert.ok(error.retryAt >= Date.now() + 3590_000);
+    return true;
+  });
+});
+
+test("the deadline still settles a JSON response that ignores cancellation", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => ({ ok: true, json: () => new Promise(() => {}) }));
+  await assert.rejects(httpJson("https://example.test", { timeoutMs: 5 }), /请求超时/);
+});
+
+test("exiting live releases a request even when fetch does not observe the abort signal", async (t) => {
+  const controller = new AbortController();
+  t.mock.method(globalThis, "fetch", () => new Promise(() => {}));
+  const pending = httpJson("https://example.test", { signal: controller.signal });
+  controller.abort();
+  await assert.rejects(pending, { name: "AbortError" });
+});

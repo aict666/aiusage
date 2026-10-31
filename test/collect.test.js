@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { collectProviders } from "../lib/collect.js";
+import { applyQuotaUpdate, collectProviders, ProviderReport } from "../lib/collect.js";
 
 test("three providers start together and keep order", async () => {
   let running = 0;
@@ -69,4 +69,13 @@ test("login miss stays separate from a token error", async () => {
   assert.equal(report.skipped, true);
   assert.equal(report.error, null);
   assert.equal(report.tokens, null);
+});
+
+test("quota updates preserve local log errors and provider JSON serialization", () => {
+  const [report] = applyQuotaUpdate([new ProviderReport({ name: "Claude", tokens: null, tokenError: "日志读失败", error: "日志读失败" })], {
+    name: "Claude", result: { plan: "pro", windows: [{ label: "5 小时", usedPercent: 42, resetsAt: null }], error: null, skipped: false },
+  });
+  assert.equal(report.error, "日志读失败");
+  assert.equal(report.tokens, null);
+  assert.equal(report.toJSON().windows[0].used_percent, 42);
 });

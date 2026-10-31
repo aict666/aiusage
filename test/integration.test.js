@@ -199,3 +199,23 @@ test("cancelling after files open waits for the underlying file handles to close
   assert.ok(opened > 0);
   assert.equal(active.size, 0);
 });
+
+test("a growing log is read as a finite snapshot and new records arrive on the next scan", async (t) => {
+  const { paths, now } = fixture(t);
+  const path = join(paths.claude, "projects", "project with spaces", "session.jsonl");
+  const open = fs.open;
+  let appended = false;
+  t.mock.method(fs, "open", (...args) => {
+    if (args[0] === path && !appended) {
+      appended = true;
+      appendFileSync(path, JSON.stringify({ requestId: "new-during-scan", timestamp: now.toISOString(),
+        message: { model: "claude-sonnet-4-6", usage: { input_tokens: 20, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 30 } } }) + "\n");
+    }
+    return open(...args);
+  });
+  const [before] = await collect(now, null, { offline: true });
+  assert.equal(appended, true);
+  assert.equal(before.tokens.today, 100);
+  const [after] = await collect(now, null, { offline: true });
+  assert.equal(after.tokens.today, 150);
+});
