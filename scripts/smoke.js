@@ -15,7 +15,10 @@ const run = (args) => {
   return result.stdout;
 };
 const data = JSON.parse(run(["--demo", "--json"]));
-assert.equal(data.providers.length, 3);
+assert.equal(data.providers.length, 4);
+assert.equal(data.providers[3].name, "agy");
+assert.equal(data.providers[3].tokens.today, 840_000);
+assert.equal(data.providers[3].windows.length, 5);
 assert.equal(data.providers[0].tokens.models[0].today, 3_527_818);
 assert.ok(data.providers[0].tokens.usage.today.cache_read_tokens > 0);
 assert.ok(data.cost_totals.today.cost_usd > 0);

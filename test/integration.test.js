@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
 import fs from "node:fs";
 import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -6,12 +7,13 @@ import { join } from "node:path";
 import test from "node:test";
 import { collect } from "../lib/collect.js";
 import { readJson } from "../lib/files.js";
+import { render } from "../lib/render.js";
 
-function fixture(t, { expired = false, flat = false } = {}) {
+function fixture(t, { expired = false, flat = false, quotas = {} } = {}) {
   const root = mkdtempSync(join(tmpdir(), "aiusage 集成 "));
   const previous = {};
   const paths = {};
-  for (const [name, folder] of [["CLAUDE_CONFIG_DIR", "claude"], ["CODEX_HOME", "codex"], ["GROK_HOME", "grok"], ["AIUSAGE_CACHE_DIR", "cache"]]) {
+  for (const [name, folder] of [["CLAUDE_CONFIG_DIR", "claude"], ["CODEX_HOME", "codex"], ["GROK_HOME", "grok"], ["AGY_HOME", "agy"], ["AIUSAGE_CACHE_DIR", "cache"]]) {
     previous[name] = process.env[name];
     paths[folder] = join(root, folder);
     mkdirSync(paths[folder]);
@@ -19,6 +21,8 @@ function fixture(t, { expired = false, flat = false } = {}) {
   }
   previous.CLAUDE_CODE_OAUTH_TOKEN = process.env.CLAUDE_CODE_OAUTH_TOKEN;
   delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  previous.ANTIGRAVITY_CLI_PATH = process.env.ANTIGRAVITY_CLI_PATH;
+  process.env.ANTIGRAVITY_CLI_PATH = process.execPath;
   t.after(() => {
     for (const [name, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[name];
@@ -52,38 +56,112 @@ function fixture(t, { expired = false, flat = false } = {}) {
     { msg: "model changed", ctx: { current_model_id: "grok-4.7" } },
     { ts: now.toISOString(), ctx: { prompt_tokens: 30, cached_prompt_tokens: 20, completion_tokens: 20 } },
   ]);
+  const agyLogDir = join(paths.agy, "brain", "conv-1", ".system_generated", "logs");
+  mkdirSync(agyLogDir, { recursive: true });
+  jsonl(join(agyLogDir, "transcript.jsonl"), [
+    { step_index: 0, type: "USER_INPUT", created_at: now.toISOString() },
+    { step_index: 1, type: "PLANNER_RESPONSE", created_at: now.toISOString(), model: "gemini-2.5-pro", input_tokens: 100, cache_read_tokens: 200, output_tokens: 50 },
+  ]);
+  // transcript_full.jsonl mirrors the same steps and must never be double-counted.
+  jsonl(join(agyLogDir, "transcript_full.jsonl"), [
+    { step_index: 1, type: "PLANNER_RESPONSE", created_at: now.toISOString(), model: "gemini-2.5-pro", input_tokens: 100, cache_read_tokens: 200, output_tokens: 50 },
+  ]);
   const requested = [];
+  const agyCalls = [];
+  t.mock.method(childProcess, "execFile", (file, args, options, callback) => {
+    assert.equal(file, process.execPath);
+    agyCalls.push(args);
+    queueMicrotask(() => callback(null, args[0] === "--version" ? "1.5.0\n" : JSON.stringify({
+      status: "SUCCESS", num_turns: 0, command: { name: "usage", data: { groups: [
+        { name: "Gemini Models", buckets: [{ id: "gemini-5h", window: "5h", remaining_fraction: 0.75, reset_time: new Date(now.getTime() + 3_600_000).toISOString() }] },
+      ] } },
+    }), ""));
+    return { stdin: { end() {} } };
+  });
   t.mock.method(globalThis, "fetch", async (url, options) => {
     requested.push(url);
     if (url === "https://platform.claude.com/v1/oauth/token") return Response.json({ access_token: "claude-new", refresh_token: "claude-refresh-new", expires_in: 3600 });
     if (url === "https://auth.x.ai/oauth2/token") return Response.json({ access_token: "grok-new", refresh_token: "grok-refresh-new", expires_in: 3600 });
-    if (url === "https://api.anthropic.com/api/oauth/usage") {
+    if (url === "https://api.anthropic.com/api/oauth/usage?cedar_ember=1") {
       assert.equal(options.headers.Authorization, `Bearer ${expired ? "claude-new" : "claude-test"}`);
-      return Response.json({ five_hour: { utilization: 25, resets_at: new Date(now.getTime() + 3_600_000).toISOString() } });
+      return Response.json(quotas.claude ?? { five_hour: { utilization: 25, resets_at: new Date(now.getTime() + 3_600_000).toISOString() } });
     }
-    if (url === "https://chatgpt.com/backend-api/wham/usage") return Response.json({ plan_type: "plus", rate_limit: { primary_window: { used_percent: 12, limit_window_seconds: 18000 } } });
+    if (url === "https://chatgpt.com/backend-api/wham/usage") return Response.json(quotas.codex ?? { plan_type: "plus", rate_limit: { primary_window: { used_percent: 12, limit_window_seconds: 18000 } } });
+    if (url === "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits") return Response.json({credits: [], available_count: 0});
+    if (url === "https://grok.com/prod_mc_billing.ConsumerUiSvc/GetRemainingResets") {
+      assert.equal(options.method, "POST");
+      assert.equal(options.headers.Authorization, `Bearer ${expired ? "grok-new" : "grok-test"}`);
+      assert.deepEqual(options.body, new Uint8Array(5));
+      return new Response(new Uint8Array(5));
+    }
     if (url.startsWith("https://cli-chat-proxy.grok.com/v1/")) {
       assert.equal(options.headers.Authorization, `Bearer ${expired ? "grok-new" : "grok-test"}`);
-      return Response.json(url.includes("billing") ? { config: { creditUsagePercent: 60 } } : { subscription_tier_display: "SuperGrok" });
+      return Response.json(url.includes("billing") ? quotas.grok ?? { config: { creditUsagePercent: 60 } } : { subscription_tier_display: "SuperGrok" });
     }
     throw new Error(`Unexpected request: ${url}`);
   });
-  return { paths, now, requested };
+  return { paths, now, requested, agyCalls };
 }
 
 test("all providers read custom paths, BOM credentials, and CRLF logs", async (t) => {
   const { now, requested } = fixture(t);
   const reports = await collect(now);
-  assert.equal(requested.length, 4);
+  assert.equal(requested.length, 6);
   assert.deepEqual(reports.map(({ name, skipped, error, tokens }) => ({ name, skipped, error, today: tokens?.today })), [
     { name: "Claude", skipped: false, error: null, today: 100 },
     { name: "Codex", skipped: false, error: null, today: 250 },
     { name: "Grok", skipped: false, error: null, today: 50 },
+    { name: "agy", skipped: false, error: null, today: 350 },
   ]);
-  assert.deepEqual(reports.map((report) => report.tokens.models[0].model), ["claude-sonnet-4-6", "gpt-6.1-sol", "grok-4.7"]);
-  assert.deepEqual(reports.map((report) => report.tokens.usage.today.cache_read_tokens), [30, 150, 20]);
-  assert.deepEqual(reports.map((report) => report.tokens.usage.today.unpriced_tokens), [0, 0, 0]);
+  assert.deepEqual(reports.map((report) => report.tokens.models[0].model), ["claude-sonnet-4-6", "gpt-6.1-sol", "grok-4.7", "gemini-2.5-pro"]);
+  assert.deepEqual(reports.map((report) => report.tokens.usage.today.cache_read_tokens), [30, 150, 20, 200]);
+  assert.deepEqual(reports.map((report) => report.tokens.usage.today.unpriced_tokens), [0, 0, 0, 0]);
   assert.equal(reports[0].tokens.usage.today.cost_usd, 0.000714);
+  assert.equal(reports[3].windows[0].usedPercent, 25);
+  assert.equal(reports[3].tokens.today, 350);
+});
+
+for (const percent of [0, 0.5, 1, 1.5, 100, null]) test(`quota percentages preserve API units through cache, JSON, and display (${percent})`, async (t) => {
+  const window = { utilization: percent, resets_at: "2026-11-15T00:00:00Z" };
+  const { now, requested } = fixture(t, { quotas: {
+    claude: {
+      five_hour: window, seven_day: window, seven_day_sonnet: window, seven_day_opus: window,
+      extra_usage: { is_enabled: true, utilization: percent },
+    },
+    codex: { rate_limit: {
+      primary_window: { used_percent: percent, limit_window_seconds: 18000 },
+      secondary_window: { used_percent: percent, limit_window_seconds: 604800 },
+    } },
+    grok: { config: { creditUsagePercent: percent } },
+  } });
+  for (const cached of [false, true]) {
+    const reports = await collect(now);
+    assert.equal(requested.length, 6);
+    assert.deepEqual(reports.slice(0, 3).map((report) => report.windows.length), [5, 2, 1]);
+    for (const report of reports.slice(0, 3)) {
+      assert.equal(report.error, null);
+      assert.equal(report.quota.cached, cached);
+      assert.ok(report.windows.every((entry) => entry.usedPercent === percent));
+      assert.ok(report.toJSON().windows.every((entry) => entry.used_percent === percent));
+    }
+    // agy explicitly reports a remaining fraction; its conversion stays separate.
+    assert.equal(reports[3].windows[0].usedPercent, 25);
+    if (percent === 1) {
+      const text = render([reports[0]], { color: false, width: 140, now });
+      assert.match(text, /7 天\s+[━─]+\s+1%\s+99%/);
+      assert.doesNotMatch(text, /100%/);
+    }
+  }
+});
+
+test("agy shares persisted quota cooldowns across collections", async (t) => {
+  const { now, agyCalls } = fixture(t);
+  const first = (await collect(now))[3];
+  const cached = (await collect(now))[3];
+  assert.deepEqual(agyCalls, [["--version"], ["-p", "/usage", "--output-format", "json"]]);
+  assert.deepEqual(cached.windows, first.windows);
+  assert.equal(cached.quota.cached, true);
+  assert.equal(cached.quota.updated_at, first.quota.updated_at);
 });
 
 test("Claude merges message snapshots when requestId is absent", async (t) => {
@@ -159,11 +237,12 @@ test("Claude OAuth throttling is not retried on another endpoint or a subsequent
   assert.deepEqual(requests.filter((url) => /claude|anthropic/.test(url)), ["https://platform.claude.com/v1/oauth/token"]);
 });
 
-test("offline collection reads token logs without accessing the provider endpoints", async (t) => {
-  const { now, requested } = fixture(t);
+test("offline collection reads token logs without accessing endpoints or invoking agy", async (t) => {
+  const { now, requested, agyCalls } = fixture(t);
   const reports = await collect(now, null, { offline: true });
   assert.equal(requested.length, 0);
-  assert.deepEqual(reports.map((report) => report.tokens.today), [100, 250, 50]);
+  assert.deepEqual(reports.map((report) => report.tokens?.today), [100, 250, 50, 350]);
+  assert.equal(agyCalls.length, 0);
   assert.ok(reports.every((report) => report.quota.status === "offline"));
 });
 
@@ -173,7 +252,7 @@ test("cancelling a local log scan does not leave a rejected stream or request ru
   const pending = collect(now, null, { offline: true, signal: controller.signal });
   controller.abort();
   const reports = await pending;
-  assert.equal(reports.length, 3);
+  assert.equal(reports.length, 4);
   assert.equal(requested.length, 0);
 });
 

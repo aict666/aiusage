@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { collectProviders } from "../lib/collect.js";
-import { MIN_QUOTA_INTERVAL, QuotaCache } from "../lib/quota-cache.js";
+import { MIN_MANUAL_REFRESH_INTERVAL, MIN_QUOTA_INTERVAL, QuotaCache } from "../lib/quota-cache.js";
 
 function fixture(t) {
   const directory = mkdtempSync(join(tmpdir(), "aiusage-quota-"));
@@ -207,4 +207,47 @@ test("jitter only slows the cadence and cached JSON contains no auth data", asyn
   const text = readFileSync(join(directory, files[0]), "utf8");
   assert.ok(!text.includes("secret"));
   assert.throws(() => new QuotaCache({ interval: 599_000 }), /至少 600/);
+});
+
+test("manual force refresh bypasses the 10-minute cache after 15s while keeping anti-spam and 429 guards", async (t) => {
+  const { options, advance } = fixture(t);
+  let reads = 0;
+  const load = async () => ["pro", [{ label: "5 小时", usedPercent: ++reads * 10, resetsAt: null }]];
+  await new QuotaCache(options).get("Claude", load);
+  assert.equal(reads, 1);
+
+  // Within the 15s anti-double-click guard, force still reuses the fresh snapshot.
+  advance(MIN_MANUAL_REFRESH_INTERVAL - 1);
+  const debounced = await new QuotaCache({ ...options, force: true }).get("Claude", load);
+  assert.equal(reads, 1);
+  assert.equal(debounced.windows[0].usedPercent, 10);
+
+  // After 15s (still well inside the 10-minute auto window), force makes a real request.
+  advance(1);
+  const refreshed = await new QuotaCache({ ...options, force: true }).get("Claude", load);
+  assert.equal(reads, 2);
+  assert.equal(refreshed.windows[0].usedPercent, 20);
+  assert.equal(refreshed.quota.cached, false);
+
+  // Offline always wins even if force is set.
+  advance(MIN_MANUAL_REFRESH_INTERVAL);
+  const offline = await new QuotaCache({ ...options, offline: true, force: true }).get("Claude", () => assert.fail("offline must not call loader"));
+  assert.equal(offline.quota.status, "offline");
+
+  // Active 429 backoff is never bypassed by manual refresh.
+  await new QuotaCache({ ...options, force: true }).get("Claude", async () => {
+    reads++;
+    throw Object.assign(new Error("HTTP 429"), { code: 429, retryAt: options.now() + 30 * 60_000 });
+  });
+  assert.equal(reads, 3);
+  advance(5 * 60_000);
+  const guarded = await new QuotaCache({ ...options, force: true }).get("Claude", load);
+  assert.equal(reads, 3);
+  assert.equal(guarded.quota.status, "backoff");
+
+  // Once 429 window expires, force succeeds and clears rateLimitedUntil.
+  advance(25 * 60_000);
+  const recovered = await new QuotaCache({ ...options, force: true }).get("Claude", load);
+  assert.equal(reads, 4);
+  assert.equal(recovered.error, null);
 });

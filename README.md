@@ -2,9 +2,11 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-Plan quotas, local token usage, prompt-cache usage, and estimated API costs for **Claude, Codex, and Grok**, in your terminal.
+Plan quotas, local token usage, prompt-cache usage, and estimated API costs for **Claude, Codex, Grok, and Antigravity (agy)**, in your terminal (plus a lightweight native macOS menu bar app).
 
 Runs on macOS, Linux, and Windows. Uses your existing CLI logins, with no extra account, third-party packages, or telemetry.
+
+Claude, Codex, and Grok also show banked reset counts and individual expiry dates in your local timezone, cached with plan quotas. Codex distinguishes held cards from currently applicable cards. Failed queries remain unknown, and no reset is redeemed. JSON includes `reset_credits`.
 
 ## Quick start
 
@@ -69,10 +71,11 @@ The default table uses **two rows per model**: token totals and estimated USD co
 | `aiusage` | Show quotas, local tokens, cache usage, and estimated costs |
 | `aiusage --demo` | Preview with sample data, without reading credentials or logs or calling provider APIs |
 | `aiusage --live` | Monitor in place; refresh local logs every 15 seconds and quotas independently in the background |
+| `aiusage --refresh` | Force one immediate remote quota fetch (bypasses the 10-minute cache; keeps 15s debounce and 429 backoff) |
 | `aiusage --offline` | Read local logs and saved quota snapshots without accessing credentials or the network |
 | `aiusage --live --interval 30` | Refresh local logs every 30 seconds; minimum 5 seconds |
 | `aiusage --live --quota-interval 1200` | Poll quotas no sooner than every 20 minutes; minimum 600 seconds |
-| `aiusage --details` | Expand token, cost, input/output, cache-write, and cache-hit-rate metrics into separate rows |
+| `aiusage --details` | Expand token, cost, input/output, cache-write, and cache-hit-rate metrics into separate rows; include quota reset countdowns |
 | `aiusage --json` | Output raw counts, usage breakdowns, pricing metadata, and cost coverage as JSON |
 | `aiusage --ascii` | Use ASCII progress bars, separators, and decorations |
 | `aiusage --no-color` | Disable colors |
@@ -83,7 +86,7 @@ Options can be combined, for example `aiusage --demo --details --no-color`.
 
 `NO_COLOR`, including an empty value, disables colors. Unsupported terminals and redirected output do not receive color escapes. `TERM=dumb` also enables ASCII decorations and disables the live loading status.
 
-All three providers are read concurrently. If a provider request fails, the command exits with code `1` and still prints the results it collected. If all three providers are logged out, it also exits with code `1`.
+All four providers are read concurrently. If a provider request fails, the command exits with code `1` and still prints the results it collected. If all providers are logged out or unavailable, it also exits with code `1`.
 
 ## Live monitoring and quota polling
 
@@ -128,6 +131,7 @@ Log in to each provider's CLI first. Providers work independently: an unavailabl
 | Claude | Claude Code | macOS Keychain entry `Claude Code-credentials`, or `~/.claude/.credentials.json` | `%USERPROFILE%\.claude\.credentials.json` |
 | Codex | Codex CLI | `~/.codex/auth.json` | `%USERPROFILE%\.codex\auth.json` |
 | Grok | Grok CLI | `~/.grok/auth.json` | `%USERPROFILE%\.grok\auth.json` |
+| agy | Antigravity CLI 1.1.12+ | Managed by agy | Managed by agy |
 
 Custom directories are supported through `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, and `GROK_HOME`, including paths with spaces, CJK characters, or a leading `~`. Claude also supports `CLAUDE_CODE_OAUTH_TOKEN`. See [Claude's credential management documentation](https://code.claude.com/docs/en/authentication#credential-management) for its platform-specific storage.
 
@@ -135,19 +139,29 @@ Native Windows and WSL use their own home directories. If you logged in to a CLI
 
 When Claude or Grok access tokens expire, aiusage uses the locally stored refresh token and writes the refreshed credentials back to their original location, preserving other fields. File updates use a temporary file in the same directory. Files have mode `0600` on macOS/Linux and inherit the directory's access controls on Windows. Environment-provided tokens are never rewritten.
 
+For **agy**, install [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli) and run `agy` once to sign in. aiusage invokes `agy -p /usage --output-format json` and reads its structured quota report; agy handles authentication and token refresh. The [official changelog](https://github.com/google-antigravity/antigravity-cli/blob/main/CHANGELOG.md) documents this read-only command. Version 1.1.12 or newer is required; older or unrecognized versions are rejected before running `/usage`. A missing installation is shown as not logged in.
+
+aiusage looks for `agy` (`agy.exe` on Windows) on `PATH` and in `~/.local/bin`, plus common Homebrew locations on macOS. Set `ANTIGRAVITY_CLI_PATH` to a specific executable when needed; paths with spaces, CJK characters, and a leading `~` are supported. A quota query runs in a temporary directory with automatic CLI updates disabled, with a 5-second version check and a 45-second report timeout. Cached and offline reads do not launch agy.
+
 ## Quotas
 
-Quotas come from the providers' usage endpoints. Each window shows used percentage, remaining percentage, and reset time.
+Quotas come from the providers' usage endpoints or agy's native quota report. Each window shows used percentage, remaining percentage, and reset time.
+
+Claude, Codex, and Grok report percentages directly: `1` means **1%** used and `0.5` means **0.5%** used. Previously cached quotas update on the next scheduled remote refresh after an upgrade. Restart an active Live process to load the new version.
+
+agy preserves the separate Gemini and Claude/GPT five-hour and weekly pools, along with independent model pools such as Gemini 4 Argon when reported. Disabled buckets are hidden; missing quota fractions stay unknown. Weekly-only plans do not gain an invented five-hour window. The native report supplies no subscription name, so aiusage leaves the plan empty.
 
 - Green: below 50% used. Yellow: 50% to below 80%. Red: 80% or more.
 - The reset column shows the full local timestamp and a countdown.
 - Resets today or tomorrow use the corresponding local-day label; later dates use month and day.
 
-These quota endpoints are undocumented and may require updates when the provider clients change.
+The directly accessed quota endpoints are undocumented and may require updates when the provider clients change.
 
 ## Token accounting
 
 Tokens come from local logs, independently of the plan quotas. Today starts at local midnight. The 7-day and 30-day windows both include today.
+
+agy reads per-step token and cache counts from `~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl` (overridable via `AGY_HOME`), skipping `transcript_full.jsonl` mirrors so steps are counted once. Internal model codenames without published API rates report exact token and cache-hit totals while leaving USD estimates unpriced.
 
 The terminal abbreviates and rounds counts using K, M, and B. Model rows show totals **including cached tokens**; do not add the cache detail rows again. Use `--details` for uncached input and output, or `--json` for exact raw numbers.
 
@@ -216,11 +230,12 @@ On Windows PowerShell, run `.\aiusage-windows-x64.exe`; in CMD, run `aiusage-win
 
 ## Development and builds
 
-Running and testing require Node.js only. Building standalone executables also requires Bun; CI pins version `1.3.11`.
+Running and testing require Node.js only. Building standalone executables also requires Bun; CI pins version `1.3.11`. On macOS, `npm run build:macos` builds the ultra-lightweight native AppKit menu bar app `dist/AIUsage.app` (no WebView, ~15 MB RAM, 0% idle CPU with App Nap support, pace/burn-rate indicators, token/USD cards, and menu bar display settings).
 
 ```text
 npm test
 npm run build
+npm run build:macos
 npm run build -- linux-x64 linux-arm64
 npm run build -- windows-x64
 npm run build -- --all
@@ -232,7 +247,7 @@ CI tests Node.js 18 and 24 on macOS, Linux, and Windows, checks the globally ins
 
 ## Privacy
 
-aiusage reads local login information and usage logs, and contacts the three providers' quota endpoints. It does not upload logs or tokens to a separate service, print credentials, email addresses, or account IDs, or collect telemetry.
+aiusage reads local login information and usage logs, contacts Claude/Codex/Grok quota endpoints, and invokes the installed agy CLI for Antigravity quotas. It does not upload logs or tokens to a separate service, print credentials, email addresses, or account IDs, or collect telemetry. agy's own authentication and network behavior remain managed by that CLI.
 
 ## License
 

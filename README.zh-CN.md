@@ -2,19 +2,31 @@
 
 [English](README.md) | **简体中文**
 
-在 macOS、Linux、Windows 的终端查看 Claude、Codex、Grok 的套餐额度、本机 Token、缓存用量和 API 等价费用。
+在 macOS、Linux、Windows 的终端查看 Claude、Codex、Grok、Antigravity（agy）的套餐额度与本机 Token、缓存用量和 API 等价费用。
 
 它读取你已经登录过的 CLI，不创建自己的账号，也不上传日志或令牌。
+
+支持查询 Claude、Codex、Grok 的重置卡数量及每批到期时间（本机时区），与额度一起缓存。Codex 另外显示当前适用数量；持有卡片不代表现在即可使用。查询失败保留未知状态，不显示成 0 张；不会兑换或消耗重置卡。`--json` 提供 `reset_credits` 明细。
+
+接口来源：Claude 在 OAuth usage 请求中启用 `cedar_ember=1`；Codex 读取独立的 `wham/rate-limit-reset-credits`（参照 [Sub2API](https://github.com/Wei-Shaw/sub2api/blob/main/backend/internal/service/openai_quota_service.go)）；Grok 读取 `ConsumerUiSvc/GetRemainingResets`（协议参考 [ai-usagebar](https://docs.rs/crate/ai-usagebar/1.50.0/source/src/supergrok/resets.rs)）。
 
 ```text
   aiusage                                                                              10-30 09:00
   套餐额度
-  服务 / 套餐       窗口    已用               剩余  重置
+  服务 / 套餐       窗口                 已用               剩余  重置
   ────────────────────────────────────────────────────────────────────────────────────────────────
-  Claude · pro      5 小时  ━───────────   6%   94%  今天 13:30 · 5 小时后
-                    7 天    ━━━━━━━━━━──  84%   16%  11-01 03:00 · 42 小时后
-  Codex · prolite   每周    ━━──────────  13%   87%  11-04 15:33 · 5 天后
-  Grok · SuperGrok  每周    ━━━━━━━─────  60%   40%  11-02 14:56 · 3 天后
+  Claude · pro      5 小时               ━───────────   6%   94%  今天 13:30
+                    7 天                 ━━━━━━━━━━──  84%   16%  11-01 03:00
+
+  Codex · prolite   每周                 ━━──────────  13%   87%  11-04 15:33
+
+  Grok · SuperGrok  每周                 ━━━━━━━─────  60%   40%  11-02 14:56
+
+  agy               Gemini 5 小时        ━───────────  10%   90%  今天 12:00
+                    Gemini 每周          ━━━─────────  25%   75%  11-04 09:00
+                    Claude/GPT 5 小时    ━━━━━━━─────  55%   45%  今天 13:00
+                    Claude/GPT 每周      ━━━─────────  28%   72%  11-06 01:00
+                    Gemini 4 Argon 每周  ━───────────   5%   95%  11-05 15:00
 
   本机 Token
   ┌────────┬─────────────┬────────────────┬───────────────────┬────────────────────┐
@@ -52,6 +64,7 @@ npm install --global github:aict666/aiusage
 aiusage
 aiusage --demo
 aiusage --live
+aiusage --refresh
 aiusage --offline
 ```
 
@@ -83,19 +96,24 @@ npx github:aict666/aiusage
 
 ## 使用前
 
-三个服务各自独立。没登录的会显示「未登录」，其余的照常输出。
+四个服务各自独立。没登录的会显示「未登录」，其余的照常输出。
 
 | 服务 | 先完成 | macOS / Linux 默认路径 | Windows 默认路径 |
 | --- | --- | --- | --- |
 | Claude | 登录 Claude Code | macOS 钥匙串 `Claude Code-credentials`，或 `~/.claude/.credentials.json` | `%USERPROFILE%\.claude\.credentials.json` |
 | Codex | 登录 Codex CLI | `~/.codex/auth.json` | `%USERPROFILE%\.codex\auth.json` |
 | Grok | 登录 Grok CLI | `~/.grok/auth.json` | `%USERPROFILE%\.grok\auth.json` |
+| agy | 登录 Antigravity CLI 1.1.12+ | 由 agy 管理 | 由 agy 管理 |
 
 自定义目录时认这几个环境变量：`CLAUDE_CONFIG_DIR`、`CODEX_HOME`、`GROK_HOME`，支持带空格、中文和 `~` 的路径。Claude 也可以用 `CLAUDE_CODE_OAUTH_TOKEN`。[Claude 官方凭据说明](https://code.claude.com/docs/en/authentication#credential-management)列出了不同系统的存储方式。
 
 Windows 原生程序与 WSL 各自读取所在系统的用户目录。如果 CLI 登录在 WSL 中，就在同一 WSL 环境运行 aiusage。
 
 Claude 和 Grok 的访问令牌过期时，程序会用本机的 refresh token 换新令牌并写回原处，保留原文件里的其他字段。文件通过同目录临时文件替换；macOS/Linux 上权限为 `0600`，Windows 继承所在目录的访问控制，不调用 Unix 的 `chmod`。用环境变量提供的令牌不会被改写。
+
+**agy** 需要先安装 [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli)，运行一次 `agy` 完成登录。程序调用 `agy -p /usage --output-format json`，只读取结构化额度报告，登录与令牌刷新由 agy 自己处理。[官方更新说明](https://github.com/google-antigravity/antigravity-cli/blob/main/CHANGELOG.md)记录了这个只读命令。要求 agy **1.1.12 或更高版本**；旧版或无法确认的版本不会执行 `/usage`，会提示更新。未安装 agy 时显示「未登录」。
+
+程序会从 `PATH`、`~/.local/bin` 以及 macOS 常见 Homebrew 目录查找 `agy`（Windows 为 `agy.exe`）。可用 `ANTIGRAVITY_CLI_PATH` 指定可执行文件，支持空格、中文和 `~`。查询在临时目录执行，并关闭该次 agy 进程的自动更新；版本检查最多 5 秒，额度报告最多 45 秒。命中缓存或使用 `--offline` 时不会启动 agy。
 
 ## 命令
 
@@ -107,9 +125,30 @@ aiusage --ascii
 aiusage --details
 aiusage --no-color
 aiusage --version
+aiusage agy [list|save|switch|logout|rename|remove]
 ```
 
-终端里会同时读取三个服务。某个服务的接口失败时退出码为 1，已经读到的结果仍会打印。三个都未登录时退出码也是 1。
+### agy 多账号本地票据与手动切换（macOS）
+
+可将多个 `agy` 账号的 OAuth 票据安全保存在本机 macOS 钥匙串（`aiusage-agy-account`）中，仅保存别名、邮箱等非敏感元数据到 `~/Library/Application Support/aiusage/agy-accounts.json`（可用 `AIUSAGE_CONFIG_DIR` 覆盖），**不写明文票据到磁盘，不做任何 API 反代或自动轮换**：
+
+```bash
+aiusage agy save 主号                # 保存当前已登录的 agy 票据
+aiusage agy logout                   # 同步并清空当前登录，方便运行 agy 登录第二个账号
+aiusage agy save 副号                # 登录第二个账号后保存
+aiusage agy list                     # 查看已保存账号及当前生效账号
+aiusage agy switch 副号              # 手动切换（默认开启防旧进程覆写保护）
+aiusage agy switch 副号 --close-running  # 切换并温和退出旧终端中的 agy 进程
+aiusage agy switch -                 # 在上一个账号间快速互切
+aiusage agy stop-running             # 一键温和退出当前运行中的旧 agy 进程
+aiusage agy auto-guard on|off        # 开关防旧进程覆写保护（默认 on）
+aiusage agy rename 副号 备用         # 重命名别名
+aiusage agy remove 备用              # 删除已保存票据（不影响当前登录）
+```
+
+每个已保存的 `agy` 账号拥有独立的额度缓存键，切号后会立即读取新账号额度；默认开启「防旧进程覆写钥匙串」保护，旧终端 `agy` 自动续签令牌时会自动保存其新票据并立刻恢复你切换的目标账号（零网络请求、不覆盖未保存的新登录）。`AIUsage.app` 的 `agy` 详情页支持一键「关闭旧 agy」，设置页也可开启「切号时自动关闭旧 agy」。
+
+终端里会同时读取四个服务。某个服务的查询失败时退出码为 1，已经读到的结果仍会打印。所有服务都未登录或不可用时退出码也是 1。
 
 设置 `NO_COLOR`（包括空值）或加上 `--no-color` 会关掉颜色；终端不支持颜色时也不发送颜色转义。`TERM=dumb` 和重定向输出不会带颜色。`--json` 适合再交给别的脚本。
 
@@ -117,7 +156,7 @@ aiusage --version
 
 `aiusage --demo` 使用示例数据预览排版，不读取登录信息、本机日志，也不请求接口。可以与 `--no-color` 或 `--json` 组合使用。从源码预览时运行 `node bin/aiusage.js --demo`。
 
-输出会根据终端宽度调整：宽屏用表格对齐窗口和模型，窄屏按服务分组换行，保留剩余额度、重置时间和 Token 明细。中文、组合字符和常见 emoji 按显示宽度对齐。
+输出会根据终端宽度调整：宽屏用表格对齐窗口和模型，窄屏按服务分组换行，保留剩余额度、重置时间和 Token 明细。服务之间留一行空白，额度快照与正文分开；默认重置列只显示日期和时刻，`--details` 另外显示倒计时。中文、组合字符和常见 emoji 按显示宽度对齐。
 
 默认每个模型两行：第一行放 Token 合计和费用，第二行放缓存读／写，模型之间不留空行。参考 [ccusage](https://github.com/ccusage/ccusage)，宽屏采用轻边框表格，并明确标注 `Token/USD`；较小的终端使用无边框表格，再窄时自动换行。`--details` 展开输入、输出、缓存读写、命中率和费用等逐项明细。
 
@@ -157,17 +196,23 @@ aiusage --live --demo
 
 ## 额度
 
-额度来自各家当前的用量接口，显示的是已用比例、剩余比例和重置时间。
+额度来自各家当前的用量接口或 agy 原生额度报告，显示的是已用比例、剩余比例和重置时间。
+
+Claude、Codex 和 Grok 接口里的百分比直接按百分数读取，例如 `1` 表示已用 **1%**，`0.5` 表示已用 **0.5%**。升级前已缓存的额度会在下一次远程刷新后更新；正在运行的 Live 进程需要退出后重开才能加载新版本。
+
+agy 分别展示 Gemini、Claude/GPT 的 5 小时和每周额度，接口返回 Argon 等独立模型池时也会保留。停用的窗口不展示；没有剩余比例时显示未知，不把它当成用完或未用。只有周额度的套餐不会补出 5 小时窗口。原生报告没有套餐名称，因此套餐字段留空。
 
 - 绿色低于 50%，黄色 50% 到 80%，红色达到 80%。
 - 重置列显示完整日期和倒计时。
 - 当天、次日分别写成「今天」「明天」，更远的写成月-日。
 
-这些接口没有公开文档。客户端改版后，这里可能需要跟着改。
+程序直接访问的额度接口没有公开文档。客户端改版后，这里可能需要跟着改。
 
 ## Token 怎么算
 
 Token 来自本机日志，不是套餐剩余额度。按本地时区切分。近 7 天、近 30 天都包含今天。
+
+agy 从 `~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl`（可用 `AGY_HOME` 覆盖）读取每次 `PLANNER_RESPONSE` 的输入、读缓存与输出 Token（跳过镜像的 `transcript_full.jsonl` 避免重复计数）。官方未公开 API 单价的内部代号模型会展示精确 Token 与缓存命中率，费用列标记为未知。
 
 终端按模型分行，并用 K、M、B 缩短数字。每个模型下单列缓存读取、缓存写入，以及今天、近 7 天、近 30 天的 API 等价费用。模型行显示的 Token 合计已经包含缓存，不能再把缓存明细加一次。`aiusage --details` 另外显示未缓存输入和输出；`aiusage --json` 保留原始数字和各模型明细。
 
@@ -212,13 +257,22 @@ JSON 在已有 `today`、`days7`、`days30`、`models` 字段之外，增加 `to
 ```text
 npm test
 npm run build
+npm run build:macos
 npm run build -- linux-x64 linux-arm64
 npm run build -- windows-x64
 npm run build -- --all
 ```
 
+### macOS 原生菜单栏应用 (`AIUsage.app`)
+
+macOS 上可运行 `npm run build:macos` 构建纯原生 AppKit 菜单栏应用 `dist/AIUsage.app`（需要 Xcode Command Line Tools；若已安装 Bun 会自动内嵌独立 `aiusage` 可执行引擎，可直接拖入 `/Applications` 使用）：
+
+- **极低资源占用**：不使用 WebView、不常驻后台 JS 进程，物理内存占用约 **15 MB**，隐藏时 **0% CPU** 并原生支持 macOS App Nap。
+- **面板与交互**：左侧垂直图标导航栏切换总览、`Claude`、`Codex`、`Grok`、`agy` 与设置页；进度条标记当前时间窗口推进刻度，并提示超速消耗倍数（Pace）与预计耗尽时间。
+- **顶部菜单栏样式**：支持切换「图标 + 最紧迫窗口剩余%」「仅极简图标」「今日估算 USD」「多服务简写」，以及服务显隐、刷新间隔、离线/示例模式与开机自启。
+
 运行和测试只需要 Node.js；独立可执行文件构建另外需要 Bun（CI 固定为 `1.3.11`）。Windows 原生构建使用 [Bun 的 x64 baseline 版本](https://github.com/oven-sh/bun/releases/download/bun-v1.3.11/bun-windows-x64-baseline.zip)，与编译目标保持一致；CI 会自动安装。不指定目标时构建当前系统、当前架构，产物放在 `dist/`。CI 在 macOS、Linux、Windows 上测试 Node.js 18、24，检查 npm 安装后的命令入口，并在各系统运行原生独立文件的示例与 JSON 输出检查。
 
 ## 隐私
 
-程序只访问本机登录信息和上面三个额度接口。它不会打印令牌、邮箱或账号编号，也没有遥测。
+程序读取本机登录信息和用量日志，访问 Claude/Codex/Grok 额度接口，并调用已安装的 agy CLI 查询 Antigravity 额度。它不会向其他服务上传日志或令牌，不打印令牌、邮箱或账号编号，也没有遥测。agy 自身的登录和联网行为由该 CLI 管理。

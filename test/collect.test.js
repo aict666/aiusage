@@ -79,3 +79,20 @@ test("quota updates preserve local log errors and provider JSON serialization", 
   assert.equal(report.tokens, null);
   assert.equal(report.toJSON().windows[0].used_percent, 42);
 });
+
+test("Claude includes Fable structured limits even when not the active limiting window", async () => {
+  const { claudeWindows } = await import('../lib/collect.js');
+  const windows = claudeWindows({
+    seven_day: {utilization: 86, resets_at: '2026-11-14T19:00:00Z'},
+    seven_day_sonnet: {utilization: 10},
+    limits: [
+      {kind: 'weekly_all', percent: 86},
+      {kind: 'weekly_scoped', percent: 59, is_active: false, resets_at: '2026-11-14T19:00:00Z', scope: {model: {id: null, display_name: 'Fable'}}},
+      {kind: 'weekly_scoped', percent: 10, scope: {model: {display_name: 'Sonnet'}}},
+      {kind: 'weekly_scoped', percent: null, scope: {model: {display_name: 'Other'}}},
+    ],
+    weekly_scoped_shares: [{limit_index: 1, used_percent_of_weekly: 30, allowance_percent_of_weekly: 50}],
+  });
+  assert.deepEqual(windows.map(w => [w.label, w.usedPercent]), [['7 天',86], ['Sonnet 周',10], ['Fable 周',59], ['Other 周',null]]);
+  assert.equal(windows[2].resetsAt, '2026-11-14T19:00:00Z');
+});

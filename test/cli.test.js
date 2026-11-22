@@ -30,7 +30,10 @@ test("demo JSON preserves raw counts and the existing schema", () => {
   assert.equal(result.status, 0);
   assert.equal(result.stderr, "");
   const data = JSON.parse(result.stdout);
-  assert.equal(data.providers.length, 3);
+  assert.equal(data.providers.length, 4);
+  assert.equal(data.providers[3].name, "agy");
+  assert.equal(data.providers[3].tokens.today, 840_000);
+  assert.equal(data.providers[3].windows.length, 5);
   assert.equal(data.providers[0].tokens.models[0].today, 3_527_818);
   assert.equal(data.providers[1].windows[0].used_percent, 13);
   assert.equal(data.providers[0].tokens.today, data.providers[0].tokens.models.reduce((sum, row) => sum + row.today, 0));
@@ -60,7 +63,8 @@ test("live flags enforce the quota minimum and reject incompatible output before
   assert.equal(options.offline, true);
   assert.equal(options.interval, 30_000);
   assert.equal(options.quotaInterval, 1200_000);
-  for (const args of [["--live", "--json"], ["--live", "--interval", "1"], ["--quota-interval", "60"], ["--interval", "30"], ["--unknown"]]) {
+  assert.equal(parseOptions(["--refresh", "--json"]).refresh, true);
+  for (const args of [["--live", "--json"], ["--live", "--refresh"], ["--offline", "--refresh"], ["--live", "--interval", "1"], ["--quota-interval", "60"], ["--interval", "30"], ["--unknown"]]) {
     const result = run(args);
     assert.equal(result.status, 2);
     assert.equal(result.stdout, "");

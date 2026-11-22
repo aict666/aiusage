@@ -1,7 +1,7 @@
 {
   "name": "aiusage",
-  "version": "0.4.1",
-  "description": "Show Claude, Codex, and Grok plan quotas and local token usage in the terminal.",
+  "version": "0.4.7",
+  "description": "Show Claude, Codex, Grok, and Antigravity (agy) plan quotas, plus supported local token usage in the terminal.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/aict666/aiusage.git"
@@ -24,6 +24,7 @@
   "scripts": {
     "start": "node ./bin/aiusage.js",
     "build": "node ./scripts/build.js",
+    "build:macos": "node ./scripts/build-macos.js",
     "test": "node --test"
   }
 }
